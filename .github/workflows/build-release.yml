@@ -10,13 +10,19 @@ on:
 
 jobs:
   windows-build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y wine64 wine32 mono-devel
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,11 +38,14 @@ jobs:
 
       - name: Locate installer
         id: find_installer
-        shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path dist -Filter '*.exe' -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-          if (-not $exe) { throw 'No Windows installer (.exe) found in dist after build.' }
-          "installer=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          set -euo pipefail
+          installer=$(find dist -type f -name '*.exe' -print -quit)
+          if [ -z "$installer" ]; then
+            echo "No Windows installer (.exe) found in dist after build." >&2
+            exit 1
+          fi
+          echo "installer=$installer" >> "$GITHUB_OUTPUT"
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
