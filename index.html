@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>picoGraph</title>
+    <link rel="stylesheet" href="styles/main.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="header-primary-actions">
+        <button id="compileButton" class="header-primary-button" type="button">Compile</button>
+      </div>
+  <div class="header-title">picoGraph</div>
+      <div class="header-actions">
+        <button
+          id="projectSettingsButton"
+          class="header-icon-button"
+          type="button"
+          aria-label="Project settings"
+          title="Project settings"
+        >
+          <span class="header-icon header-icon--settings" aria-hidden="true"></span>
+        </button>
+        <button
+          id="paletteToggleButton"
+          class="header-icon-button"
+          type="button"
+          aria-label="Toggle palette"
+          title="Toggle palette"
+          aria-pressed="true"
+        >
+          <span class="header-icon header-icon--palette" aria-hidden="true"></span>
+        </button>
+        <button
+          id="frameSelectionButton"
+          class="header-icon-button"
+          type="button"
+          aria-label="Frame selection"
+          title="Frame selection"
+        >
+          <span class="header-icon header-icon--frame" aria-hidden="true"></span>
+        </button>
+        <button
+          id="exportLuaButton"
+          class="header-icon-button"
+          type="button"
+          aria-label="Export Lua"
+          title="Export Lua"
+        >
+          <span class="header-icon header-icon--export" aria-hidden="true"></span>
+        </button>
+      </div>
+    </header>
+  <main id="appBody" class="app-body">
+      <aside class="overview" aria-label="Graph overview">
+        <div class="overview-section">
+          <div class="overview-title">Events</div>
+          <ul id="eventList" class="overview-list" aria-label="Existing events"></ul>
+        </div>
+        <div class="overview-section">
+          <div class="overview-title overview-title--with-action">
+            <span>Variables</span>
+            <button id="addVariableButton" type="button" class="overview-action" aria-label="Add global variable">+</button>
+          </div>
+          <ul id="variableList" class="overview-list" aria-label="Defined variables"></ul>
+        </div>
+      </aside>
+      <section class="workspace" aria-label="Blueprint workspace">
+        <div id="workspaceCanvas" class="workspace-canvas">
+          <svg id="connectionLayer" class="connection-layer" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div id="nodeLayer" class="node-layer"></div>
+        </div>
+      </section>
+      <aside id="palettePanel" class="palette" aria-label="Node palette">
+        <div class="palette-search">
+          <input id="paletteSearch" type="search" placeholder="Search nodes" />
+        </div>
+        <div id="paletteList" class="palette-list" role="listbox" aria-label="Available nodes"></div>
+      </aside>
+      <aside class="inspector" aria-label="Node inspector">
+        <div class="inspector-header">Details</div>
+        <div id="inspectorContent" class="inspector-content"></div>
+        <div class="inspector-footer">
+          <button id="duplicateNodeButton" type="button" disabled>Duplicate</button>
+          <button id="deleteNodeButton" type="button" disabled>Delete</button>
+        </div>
+      </aside>
+    </main>
+    <div
+      id="luaModal"
+      class="modal"
+      aria-hidden="true"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="luaModalTitle"
+      hidden
+    >
+      <div class="modal__backdrop" data-modal-close></div>
+      <div class="modal__panel" role="document">
+        <header class="modal__header">
+          <h2 id="luaModalTitle">Lua Preview</h2>
+          <div class="modal__actions">
+            <button
+              id="copyLuaButton"
+              type="button"
+              class="modal__icon-button"
+              aria-label="Copy to clipboard"
+              title="Copy to clipboard"
+            >
+              <span class="modal-icon modal-icon--copy" aria-hidden="true"></span>
+            </button>
+            <button
+              id="closeLuaModalButton"
+              type="button"
+              class="modal__icon-button"
+              aria-label="Close Lua preview"
+              title="Close"
+              data-modal-close
+            >
+              <span class="modal-icon modal-icon--close" aria-hidden="true"></span>
+            </button>
+          </div>
+        </header>
+        <div class="modal__body">
+          <pre class="lua-modal__code" tabindex="0"><code id="luaModalCode"></code></pre>
+        </div>
+      </div>
+    </div>
+    <template id="nodeTemplate">
+      <article class="blueprint-node" draggable="false">
+        <header class="node-header">
+          <div class="node-title"></div>
+        </header>
+        <section class="node-io node-inputs"></section>
+        <section class="node-io node-outputs"></section>
+      </article>
+    </template>
+    <template id="pinTemplate">
+      <div class="pin" draggable="false">
+        <span class="pin-label"></span>
+        <span class="pin-handle" tabindex="0"></span>
+      </div>
+    </template>
+    <script type="module" src="scripts/main.js"></script>
+  </body>
+</html>
