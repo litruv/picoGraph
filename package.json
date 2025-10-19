@@ -4,9 +4,35 @@
   "description": "PicoGraph desktop wrapper",
   "main": "electron-main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "prebuild:win": "electron-icon-builder --input=icon.png --output=build --flatten",
+    "build:win": "electron-builder --win --x64"
   },
   "devDependencies": {
-    "electron": "^30.0.0"
+    "electron": "^30.0.0",
+    "electron-builder": "^24.6.3",
+    "electron-icon-builder": "^2.0.1"
+  },
+  "build": {
+    "appId": "com.litruv.picograph",
+    "productName": "PicoGraph",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "icon": "build/icons/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    }
   }
 }
