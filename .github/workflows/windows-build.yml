@@ -53,8 +53,8 @@ jobs:
           prerelease: false
           draft: false
           files: |
-            dist/**/*.exe
-            dist/**/*.blockmap
+            dist/*Setup*.exe
+            dist/*Setup*.exe.blockmap
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
@@ -64,5 +64,5 @@ jobs:
         with:
           name: windows-installer-${{ steps.version.outputs.tag }}
           path: |
-            dist/**/*.exe
-            dist/**/*.blockmap
+            dist/*Setup*.exe
+            dist/*Setup*.exe.blockmap
