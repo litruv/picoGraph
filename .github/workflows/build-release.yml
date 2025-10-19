@@ -1,67 +1,43 @@
-name: Build and Release Electron App
+name: Build
 
 on:
-  push:
-    tags:
-      - 'v*'
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
+	push:
+		branches:
+			- main
+	pull_request:
+		branches:
+			- main
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-          
-      - name: Install dependencies
-        run: npm install
-        
-      - name: Install electron-builder
-        run: npm install --save-dev electron-builder
-        
-      - name: Build Electron app
-        run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-build
-          path: dist/
-          
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build-windows
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: windows-build
-          path: dist/
-          
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: |
-            dist/*.exe
-            dist/*.zip
-            dist/*.msi
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+	windows-build:
+		runs-on: windows-latest
+
+		steps:
+			- name: Checkout repository
+				uses: actions/checkout@v4
+
+			- name: Setup Node.js
+				uses: actions/setup-node@v4
+				with:
+					node-version: 20
+					cache: npm
+
+			- name: Install dependencies
+				run: npm ci
+
+			- name: Build Windows package
+				run: npm run build:win
+
+			- name: Locate installer
+				id: find_installer
+				shell: pwsh
+				run: |
+					$exe = Get-ChildItem -Path dist -Filter '*.exe' -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+					if (-not $exe) { throw 'No Windows installer (.exe) found in dist after build.' }
+					"installer=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+			- name: Upload installer artifact
+				uses: actions/upload-artifact@v4
+				with:
+					name: windows-installer
+					path: ${{ steps.find_installer.outputs.installer }}
