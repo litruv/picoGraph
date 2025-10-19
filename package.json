@@ -6,7 +6,8 @@
   "scripts": {
     "start": "electron .",
     "prebuild:win": "electron-icon-builder --input=icon.png --output=build --flatten",
-    "build:win": "electron-builder --win --x64"
+    "build:win": "electron-builder --win --x64",
+    "build": "npm run build:win"
   },
   "devDependencies": {
     "electron": "^30.0.0",
