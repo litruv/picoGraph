@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
@@ -84,6 +84,7 @@ function registerIpcHandlers() {
  */
 function registerAppLifecycle() {
   app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
     createMainWindow();
     registerIpcHandlers();
 
