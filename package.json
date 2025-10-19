@@ -1,0 +1,12 @@
+{
+  "name": "picograph",
+  "version": "0.1.0",
+  "description": "PicoGraph desktop wrapper",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^30.0.0"
+  }
+}
