@@ -32,25 +32,37 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $version = node scripts/ci/update-version.js
+          node scripts/ci/update-version.js $env:GITHUB_OUTPUT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Build/release Electron app
         uses: samuelmeuli/action-electron-builder@v1
         with:
           github_token: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
-          release: true
-          args: --win --x64 --publish always
+          release: false
+          args: --win --x64 --publish never
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          prerelease: false
+          draft: false
+          files: |
+            dist/**/*.exe
+            dist/**/*.blockmap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN != '' && secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Upload installer artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-installer-${{ steps.version.outputs.version }}
+          name: windows-installer-${{ steps.version.outputs.tag }}
           path: |
             dist/**/*.exe
             dist/**/*.blockmap

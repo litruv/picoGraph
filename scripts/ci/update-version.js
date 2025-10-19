@@ -25,7 +25,7 @@ async function fetchReleases() {
 
   if (!response.ok) {
     const message = await response.text();
-    console.error(`Failed to fetch releases: ${response.status} ${message}`);
+    console.warn(`Failed to fetch releases: ${response.status} ${message}`);
     return [];
   }
 
@@ -44,7 +44,18 @@ function determineNextVersion(releases) {
     }
   }
 
-  return `${isoDate}-${String(index).padStart(2, '0')}`;
+  return index;
+}
+
+function toSemver(date, index) {
+  const [year, month, day] = date.split('-');
+  const base = `${Number(year)}.${Number(month)}.${Number(day)}`;
+  if (index <= 1) {
+    return base;
+  }
+
+  const suffix = String(index).padStart(2, '0');
+  return `${base}-a${suffix}`;
 }
 
 function updateJson(filePath, version) {
@@ -65,13 +76,24 @@ function updateJson(filePath, version) {
 (async () => {
   try {
     const releases = await fetchReleases();
-    const version = determineNextVersion(releases);
+    const index = determineNextVersion(releases);
+    const indexString = String(index).padStart(2, '0');
+    const tag = `${isoDate}-${indexString}`;
+    const semver = toSemver(isoDate, index);
     const root = process.cwd();
 
-    updateJson(path.join(root, 'package.json'), version);
-    updateJson(path.join(root, 'package-lock.json'), version);
+    updateJson(path.join(root, 'package.json'), semver);
+    updateJson(path.join(root, 'package-lock.json'), semver);
 
-    console.log(version);
+    const outputPath = process.argv[2];
+
+    if (outputPath) {
+      fs.appendFileSync(outputPath, `semver=${semver}\n`, 'utf8');
+      fs.appendFileSync(outputPath, `tag=${tag}\n`, 'utf8');
+    } else {
+      console.log(`SEMVER=${semver}`);
+      console.log(`TAG=${tag}`);
+    }
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
