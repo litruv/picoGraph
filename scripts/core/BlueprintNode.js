@@ -3,7 +3,7 @@
  * @property {string} id Unique pin identifier scoped to the node.
  * @property {string} name Public display name.
  * @property {('input'|'output')} direction Pin direction relative to the node.
- * @property {('exec'|'number'|'boolean'|'string'|'table'|'any')} kind Pin kind describing blueprint behavior.
+ * @property {('exec'|'number'|'boolean'|'string'|'table'|'any'|'color')} kind Pin kind describing blueprint behavior.
  * @property {string} [description] Optional tooltip/description.
  * @property {unknown} [defaultValue] Default value for data pins.
  */

@@ -1,6 +1,16 @@
 import { BlueprintWorkspace } from "./ui/BlueprintWorkspace.js";
 import { NodeRegistry } from "./nodes/NodeRegistry.js";
 import { LuaGenerator } from "./core/LuaGenerator.js";
+import { EmbeddedPreview } from "./ui/EmbeddedPreview.js";
+
+// Global error handlers
+window.addEventListener('error', (event) => {
+  console.error('Global error:', event.error);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+});
 
 /**
  * @typedef {{ compileLua(source: string): Promise<{ filePath: string }> }} ElectronAPI
@@ -73,6 +83,9 @@ const deleteNodeButton = /** @type {HTMLButtonElement} */ (
 const compileButton = /** @type {HTMLButtonElement} */ (
   requireElement(document.getElementById("compileButton"), "compileButton")
 );
+const previewButton = /** @type {HTMLButtonElement} */ (
+  requireElement(document.getElementById("previewButton"), "previewButton")
+);
 const exportLuaButton = /** @type {HTMLButtonElement} */ (
   requireElement(document.getElementById("exportLuaButton"), "exportLuaButton")
 );
@@ -140,6 +153,13 @@ const workspace = new BlueprintWorkspace({
 });
 
 workspace.initialize();
+
+// Initialize preview system
+const embeddedPreview = new EmbeddedPreview({
+  getLuaCode: () => {
+    return workspace.exportLua();
+  },
+});
 
 /** @type {ElectronAPI | undefined} */
 const electronAPI =
@@ -426,6 +446,10 @@ if (electronAPI && typeof electronAPI.compileLua === "function") {
   compileButton.disabled = true;
   compileButton.title = "Compile is available in the desktop app";
 }
+
+previewButton.addEventListener("click", () => {
+  embeddedPreview.open();
+});
 
 exportLuaButton.addEventListener("click", () => {
   openLuaModal();

@@ -28,7 +28,7 @@ export const sgetNode = createNodeModule(
       },
     ],
     outputs: [
-      { id: "value", name: "Color", direction: "output", kind: "number" },
+      { id: "value", name: "Color", direction: "output", kind: "color" },
     ],
     properties: [],
   },

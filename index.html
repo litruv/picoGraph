@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self' data:;" />
   <title>picoGraph</title>
     <link rel="stylesheet" href="styles/main.css" />
   </head>
@@ -10,6 +11,7 @@
     <header class="app-header">
       <div class="header-primary-actions">
         <button id="compileButton" class="header-primary-button" type="button">Compile</button>
+        <button id="previewButton" class="header-primary-button" type="button" title="Preview cart">Preview</button>
       </div>
   <div class="header-title">picoGraph</div>
       <div class="header-actions">

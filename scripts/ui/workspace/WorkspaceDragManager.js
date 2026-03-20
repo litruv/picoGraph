@@ -565,9 +565,10 @@ export class WorkspaceDragManager {
     const zoom = this.workspace.zoomLevel || 1;
     const safeX = Number.isFinite(clientX) ? clientX : rect.left;
     const safeY = Number.isFinite(clientY) ? clientY : rect.top;
+    const pending = this.workspace.navigationManager?.getPendingLayerOffset?.() ?? { x: 0, y: 0 };
     return {
-      x: (safeX - rect.left) / zoom,
-      y: (safeY - rect.top) / zoom,
+      x: (safeX - rect.left) / zoom - pending.x,
+      y: (safeY - rect.top) / zoom - pending.y,
     };
   }
 

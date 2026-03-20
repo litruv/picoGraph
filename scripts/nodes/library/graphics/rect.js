@@ -40,7 +40,7 @@ export const rectNode = createNodeModule(
         kind: "number",
         defaultValue: 8,
       },
-      { id: "color", name: "Color", direction: "input", kind: "number" },
+      { id: "color", name: "Color", direction: "input", kind: "color" },
     ],
     outputs: [
       { id: "exec_out", name: "Exec", direction: "output", kind: "exec" },

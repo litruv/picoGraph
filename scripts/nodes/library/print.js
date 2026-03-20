@@ -37,7 +37,7 @@ export const printNode = createNodeModule(
         id: "color",
         name: "Color",
         direction: "input",
-        kind: "number",
+        kind: "color",
         defaultValue: 7,
       },
     ],

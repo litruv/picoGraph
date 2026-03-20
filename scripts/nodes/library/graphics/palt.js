@@ -12,7 +12,7 @@ export const paltNode = createNodeModule(
     searchTags: ["palt", "transparency", "palette", "sprite"],
     inputs: [
       { id: "exec_in", name: "Exec", direction: "input", kind: "exec" },
-      { id: "color", name: "Color", direction: "input", kind: "number" },
+      { id: "color", name: "Color", direction: "input", kind: "color" },
       {
         id: "transparent",
         name: "Transparent",

@@ -13,7 +13,7 @@
  * @property {string} id Stable identifier unique within the node definition.
  * @property {string} name Display name.
  * @property {('input'|'output')} direction Pin direction relative to the node.
- * @property {('exec'|'number'|'boolean'|'string'|'table'|'any')} kind Blueprint connection kind.
+ * @property {('exec'|'number'|'boolean'|'string'|'table'|'any'|'color')} kind Blueprint connection kind.
  * @property {string} [description] Optional tooltip text.
  * @property {unknown} [defaultValue] Default literal for data pins.
  */

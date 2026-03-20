@@ -20,7 +20,7 @@ export class Connection {
   /**
    * @param {PinReference} from Origin pin (must be output).
    * @param {PinReference} to Target pin (must be input).
-   * @param {('exec'|'number'|'boolean'|'string'|'table'|'any')} kind Pin kind carried by the connection.
+   * @param {('exec'|'number'|'boolean'|'string'|'table'|'any'|'color')} kind Pin kind carried by the connection.
    * @param {string} [id] Optional connection identifier.
    */
   constructor(from, to, kind, id) {

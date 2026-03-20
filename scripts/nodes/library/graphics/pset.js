@@ -26,7 +26,7 @@ export const psetNode = createNodeModule(
         kind: "number",
         defaultValue: 0,
       },
-      { id: "color", name: "Color", direction: "input", kind: "number" },
+      { id: "color", name: "Color", direction: "input", kind: "color" },
     ],
     outputs: [
       { id: "exec_out", name: "Exec", direction: "output", kind: "exec" },

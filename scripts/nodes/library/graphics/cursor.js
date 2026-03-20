@@ -15,7 +15,7 @@ export const cursorNode = createNodeModule(
       { id: "exec_in", name: "Exec", direction: "input", kind: "exec" },
       { id: "x", name: "X", direction: "input", kind: "number" },
       { id: "y", name: "Y", direction: "input", kind: "number" },
-      { id: "color", name: "Color", direction: "input", kind: "number" },
+      { id: "color", name: "Color", direction: "input", kind: "color" },
     ],
     outputs: [
       { id: "exec_out", name: "Exec", direction: "output", kind: "exec" },

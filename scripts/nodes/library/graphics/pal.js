@@ -12,12 +12,12 @@ export const palNode = createNodeModule(
     searchTags: ["pal", "palette", "color", "remap"],
     inputs: [
       { id: "exec_in", name: "Exec", direction: "input", kind: "exec" },
-      { id: "c0", name: "Color 0", direction: "input", kind: "number" },
+      { id: "c0", name: "Color 0", direction: "input", kind: "color" },
       {
         id: "c1",
         name: "Color 1",
         direction: "input",
-        kind: "number",
+        kind: "color",
         defaultValue: 0,
       },
       { id: "p", name: "Palette", direction: "input", kind: "number" },

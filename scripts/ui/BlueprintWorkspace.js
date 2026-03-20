@@ -6,11 +6,13 @@ import { WorkspaceClipboardManager } from "./workspace/WorkspaceClipboardManager
 import { WorkspacePersistenceManager } from "./workspace/WorkspacePersistenceManager.js";
 import { WorkspaceMarqueeManager } from "./workspace/WorkspaceMarqueeManager.js";
 import { WorkspaceContextMenuManager } from "./workspace/WorkspaceContextMenuManager.js";
+import { WorkspaceNodeContextMenu } from "./workspace/WorkspaceNodeContextMenu.js";
 import { WorkspacePaletteManager } from "./workspace/WorkspacePaletteManager.js";
 import { WorkspaceDropManager } from "./workspace/WorkspaceDropManager.js";
 import { WorkspaceInlineEditorManager } from "./workspace/WorkspaceInlineEditorManager.js";
 import { WorkspaceNodeRenderer } from "./workspace/WorkspaceNodeRenderer.js";
 import { WorkspaceNavigationManager } from "./workspace/WorkspaceNavigationManager.js";
+import { WorkspaceWireCutManager } from "./workspace/WorkspaceWireCutManager.js";
 import { renderEventList } from "./workspace/renderEventList.js";
 import { renderVariableList } from "./workspace/renderVariableList.js";
 import {
@@ -18,7 +20,7 @@ import {
 } from "./WorkspaceSpawnShortcuts.js";
 
 /**
- * @typedef {'any'|'number'|'string'|'boolean'|'table'} VariableType
+ * @typedef {'any'|'number'|'string'|'boolean'|'table'|'color'} VariableType
  */
 
 /** @type {Array<{ value: VariableType, label: string }>} */
@@ -28,6 +30,7 @@ const VARIABLE_TYPE_DEFINITIONS = [
   { value: "string", label: "String" },
   { value: "boolean", label: "Boolean" },
   { value: "table", label: "Table" },
+  { value: "color", label: "Color" },
 ];
 
 const SUPPORTED_VARIABLE_TYPES = new Set(
@@ -175,6 +178,8 @@ export class BlueprintWorkspace {
     this.nodeDragRotationDecayFrame = null;
     /** @type {number | null} */
     this.connectionRefreshFrame = null;
+    /** @type {number | null} */
+    this.periodicUpdateTimer = null;
 
     this.graph = new NodeGraph();
     /** @type {Map<string, WorkspaceVariable>} */
@@ -240,6 +245,8 @@ export class BlueprintWorkspace {
     this.paletteManager = null;
     /** @type {WorkspaceContextMenuManager | null} */
     this.contextMenuManager = null;
+    /** @type {WorkspaceNodeContextMenu | null} */
+    this.nodeContextMenu = null;
     /** @type {WorkspaceDropManager | null} */
     this.dropManager = null;
     /** @type {WorkspaceMarqueeManager | null} */
@@ -252,6 +259,8 @@ export class BlueprintWorkspace {
     this.navigationManager = null;
     /** @type {WorkspaceDragManager | null} */
     this.dragManager = null;
+    /** @type {WorkspaceWireCutManager | null} */
+    this.wireCutManager = null;
     /** @type {HTMLTemplateElement} */
     this.nodeTemplate = BlueprintWorkspace.#requireTemplate(
       "nodeTemplate",
@@ -349,6 +358,7 @@ export class BlueprintWorkspace {
       isTypeDropdownOpen: (context) => this.#isTypeDropdownOpen(context),
     });
     this.contextMenuManager = new WorkspaceContextMenuManager(this);
+    this.nodeContextMenu = new WorkspaceNodeContextMenu(this);
     this.paletteManager = new WorkspacePaletteManager(this);
     this.dropManager = new WorkspaceDropManager(this);
     this.marqueeManager = new WorkspaceMarqueeManager(this);
@@ -356,6 +366,7 @@ export class BlueprintWorkspace {
       renderConnections: () => this.#renderConnections(),
       schedulePersist: () => this.persistenceManager.schedulePersist(),
     });
+    this.wireCutManager = new WorkspaceWireCutManager(this);
     this.nodeRenderer = new WorkspaceNodeRenderer(this, {
       inlineEditorManager: this.inlineEditorManager,
       applySelectionState: () => this.#applySelectionState(),
@@ -380,6 +391,7 @@ export class BlueprintWorkspace {
     });
 
     this.contextMenuManager.initialize();
+    this.nodeContextMenu.initialize();
     this.paletteManager.initialize();
     this.dropManager.initialize();
     this.marqueeManager.ensureElement();
@@ -405,6 +417,32 @@ export class BlueprintWorkspace {
 
     this.historyManager.initialize();
     this.isInitialized = true;
+    this.#startPeriodicUpdate();
+  }
+
+  /**
+   * Starts a periodic update that refreshes the graph when idle.
+   */
+  #startPeriodicUpdate() {
+    if (this.periodicUpdateTimer !== null) {
+      return;
+    }
+    this.periodicUpdateTimer = window.setInterval(() => {
+      if (!this.isDraggingNodes && this.workspaceDragDepth === 0) {
+        this.#renderConnections();
+        this.nodeRenderer?.refreshAllPinConnections();
+      }
+    }, 1000);
+  }
+
+  /**
+   * Stops the periodic update timer.
+   */
+  #stopPeriodicUpdate() {
+    if (this.periodicUpdateTimer !== null) {
+      window.clearInterval(this.periodicUpdateTimer);
+      this.periodicUpdateTimer = null;
+    }
   }
 
   /**
@@ -726,7 +764,7 @@ export class BlueprintWorkspace {
 
         event.preventDefault();
         const direction = event.deltaY < 0 ? 1 : -1;
-        this.navigationManager.zoomAt(pointer, direction, {
+        this.navigationManager.pushSmoothZoom(pointer, direction, {
           clientX: event.clientX,
           clientY: event.clientY,
         });
@@ -754,7 +792,22 @@ export class BlueprintWorkspace {
         }
       }
 
+      if (this.nodeContextMenu?.isVisible()) {
+        if (
+          !(rawTarget instanceof Node) ||
+          !this.nodeContextMenu.isTargetInside(rawTarget)
+        ) {
+          this.nodeContextMenu.hide();
+        }
+      }
+
       if (!(rawTarget instanceof Element)) {
+        return;
+      }
+
+      // Middle mouse starts a wire-cut gesture from anywhere in the workspace.
+      if (event.button === 1) {
+        this.wireCutManager?.beginCut(event);
         return;
       }
 
@@ -789,6 +842,7 @@ export class BlueprintWorkspace {
         return;
       }
       event.preventDefault();
+      this.nodeContextMenu?.hide();
       this.contextMenuManager.show(event.clientX, event.clientY);
     });
 
@@ -921,7 +975,7 @@ export class BlueprintWorkspace {
       this.clipboardManager?.clearPointerPosition();
     });
 
-    this.connectionLayer.addEventListener("pointerdown", (event) => {
+    this.workspaceElement.addEventListener("pointerdown", (event) => {
       this.#handleConnectionPointerDown(event);
     });
   }
@@ -1029,6 +1083,72 @@ export class BlueprintWorkspace {
       }
       this.#applySelectionState();
     }
+  }
+
+  /**
+   * Refreshes a node by replacing it with a new instance, preserving connections.
+   *
+   * @param {string} nodeId Target node identifier.
+   * @returns {boolean} Whether the node was successfully refreshed.
+   */
+  refreshNode(nodeId) {
+    const node = this.graph.nodes.get(nodeId);
+    if (!node) {
+      return false;
+    }
+
+    const connections = this.graph.getConnectionsForNode(nodeId);
+    const position = { ...node.position };
+    const nodeType = node.type;
+    const properties = { ...node.properties };
+
+    this.historyManager.withSuspended(() => {
+      this.removeNode(nodeId);
+
+      const newNode = this.registry.createNode(nodeType, {
+        id: nodeId,
+        position,
+      });
+
+      newNode.properties = properties;
+
+      this.graph.addNode(newNode);
+      this.renderNode(newNode);
+
+      connections.forEach((connection) => {
+        const isSource = connection.from.nodeId === nodeId;
+        const isTarget = connection.to.nodeId === nodeId;
+
+        if (isSource) {
+          const fromPin = newNode.getPin(connection.from.pinId);
+          const toNode = this.graph.nodes.get(connection.to.nodeId);
+          const toPin = toNode?.getPin(connection.to.pinId);
+
+          if (fromPin && toNode && toPin) {
+            this.graph.connect(
+              { nodeId: newNode.id, pinId: fromPin.id },
+              { nodeId: toNode.id, pinId: toPin.id }
+            );
+          }
+        } else if (isTarget) {
+          const fromNode = this.graph.nodes.get(connection.from.nodeId);
+          const fromPin = fromNode?.getPin(connection.from.pinId);
+          const toPin = newNode.getPin(connection.to.pinId);
+
+          if (fromNode && fromPin && toPin) {
+            this.graph.connect(
+              { nodeId: fromNode.id, pinId: fromPin.id },
+              { nodeId: newNode.id, pinId: toPin.id }
+            );
+          }
+        }
+      });
+
+      this.#renderConnections();
+      this.nodeRenderer.refreshAllPinConnections();
+    });
+
+    return true;
   }
 
   /**
@@ -4739,15 +4859,24 @@ export class BlueprintWorkspace {
    * @param {PointerEvent} event Pointer interaction payload.
    */
   #handleConnectionPointerDown(event) {
-    if (!(event.target instanceof SVGPathElement)) {
-      return;
-    }
-
     if (event.button !== 0 || !event.altKey) {
       return;
     }
 
-    const path = /** @type {SVGPathElement} */ (event.target);
+    // The nodeLayer div sits above the SVG in z-order, so event.target is usually a
+    // node element rather than an SVGPathElement. Fall back to a point-based lookup.
+    let path = event.target instanceof SVGPathElement ? /** @type {SVGPathElement} */ (event.target) : null;
+    if (!path) {
+      const hits = document.elementsFromPoint(event.clientX, event.clientY);
+      path = /** @type {SVGPathElement | null} */ (
+        hits.find((el) => el instanceof SVGPathElement && /** @type {SVGPathElement} */ (el).dataset.connectionId) ?? null
+      );
+    }
+
+    if (!path) {
+      return;
+    }
+
     const connectionId = path.dataset.connectionId;
     if (!connectionId) {
       return;
@@ -5179,23 +5308,20 @@ export class BlueprintWorkspace {
     const workspaceRect = this.workspaceElement.getBoundingClientRect();
     const startRect = startHandle.getBoundingClientRect();
     const zoom = this.zoomLevel || 1;
+    const offset = this.navigationManager?.getEffectiveOffset() ?? this.workspaceBackgroundOffset ?? { x: 0, y: 0 };
     const anchor = {
-      x:
-        (startRect.left - workspaceRect.left + startRect.width / 2) /
-        zoom,
-      y:
-        (startRect.top - workspaceRect.top + startRect.height / 2) /
-        zoom,
+      x: (startRect.left - workspaceRect.left + startRect.width / 2) / zoom - offset.x,
+      y: (startRect.top - workspaceRect.top + startRect.height / 2) / zoom - offset.y,
     };
     const pointer = {
-      x: (clientX - workspaceRect.left) / zoom,
-      y: (clientY - workspaceRect.top) / zoom,
+      x: (clientX - workspaceRect.left) / zoom - offset.x,
+      y: (clientY - workspaceRect.top) / zoom - offset.y,
     };
 
     const start = direction === "output" ? anchor : pointer;
     const end = direction === "output" ? pointer : anchor;
 
-    const controlOffset = Math.max(60 / zoom, Math.abs(end.x - start.x) * 0.5);
+    const controlOffset = Math.max(60, Math.abs(end.x - start.x) * 0.5);
     const d = `M ${start.x} ${start.y} C ${start.x + controlOffset} ${
       start.y
     } ${end.x - controlOffset} ${end.y} ${end.x} ${end.y}`;
@@ -5445,6 +5571,7 @@ export class BlueprintWorkspace {
       const targetHeight = Math.max(1, workspaceRect.height / zoom);
       this.connectionLayer.style.width = `${targetWidth}px`;
       this.connectionLayer.style.height = `${targetHeight}px`;
+      this.connectionLayer.setAttribute("overflow", "visible");
       if (this.connectionLayer.hasAttribute("viewBox")) {
         this.connectionLayer.removeAttribute("viewBox");
       }
@@ -5472,7 +5599,7 @@ export class BlueprintWorkspace {
       }
 
       const { start, end } = geometry;
-      const controlOffset = Math.max(60 / zoom, Math.abs(end.x - start.x) * 0.5);
+      const controlOffset = Math.max(60, Math.abs(end.x - start.x) * 0.5);
       const d = `M ${start.x} ${start.y} C ${start.x + controlOffset} ${
         start.y
       } ${end.x - controlOffset} ${end.y} ${end.x} ${end.y}`;
@@ -5504,22 +5631,17 @@ export class BlueprintWorkspace {
 
     const workspaceRect = this.workspaceElement.getBoundingClientRect();
     const zoom = this.zoomLevel || 1;
+    const offset = this.navigationManager?.getEffectiveOffset() ?? this.workspaceBackgroundOffset ?? { x: 0, y: 0 };
     const startRect = startHandle.getBoundingClientRect();
     const endRect = endHandle.getBoundingClientRect();
     return {
       start: {
-        x:
-          (startRect.left - workspaceRect.left + startRect.width / 2) /
-          zoom,
-        y:
-          (startRect.top - workspaceRect.top + startRect.height / 2) /
-          zoom,
+        x: (startRect.left - workspaceRect.left + startRect.width / 2) / zoom - offset.x,
+        y: (startRect.top - workspaceRect.top + startRect.height / 2) / zoom - offset.y,
       },
       end: {
-        x:
-          (endRect.left - workspaceRect.left + endRect.width / 2) / zoom,
-        y:
-          (endRect.top - workspaceRect.top + endRect.height / 2) / zoom,
+        x: (endRect.left - workspaceRect.left + endRect.width / 2) / zoom - offset.x,
+        y: (endRect.top - workspaceRect.top + endRect.height / 2) / zoom - offset.y,
       },
     };
   }
@@ -5560,14 +5682,11 @@ export class BlueprintWorkspace {
     const rect = handle.getBoundingClientRect();
     const workspaceRect = this.workspaceElement.getBoundingClientRect();
     const zoom = this.zoomLevel || 1;
+    const offset = this.navigationManager?.getEffectiveOffset() ?? this.workspaceBackgroundOffset ?? { x: 0, y: 0 };
 
     return {
-      x:
-        (rect.left - workspaceRect.left + rect.width / 2) /
-        zoom,
-      y:
-        (rect.top - workspaceRect.top + rect.height / 2) /
-        zoom,
+      x: (rect.left - workspaceRect.left + rect.width / 2) / zoom - offset.x,
+      y: (rect.top - workspaceRect.top + rect.height / 2) / zoom - offset.y,
     };
   }
 
@@ -6356,10 +6475,12 @@ export class BlueprintWorkspace {
    */
   applySerializedWorkspace(payload) {
     this.isRestoring = true;
+    this.#stopPeriodicUpdate();
     try {
       this.persistenceManager.cancelScheduledPersist();
 
       this.contextMenuManager.hide();
+      this.nodeContextMenu?.hide();
   this.#closeTypeDropdown();
       this.dragManager.removePaletteGhost();
       this.dragManager.removeNodeGhost();
@@ -6480,7 +6601,6 @@ export class BlueprintWorkspace {
       this.isPaletteVisible = paletteVisible;
       this.#applyPaletteVisibility(this.isPaletteVisible);
 
-  this.navigationManager.setBackgroundOffset({ x: 0, y: 0 });
       this.#updateProjectSettingsToggle();
       this.#renderOverview();
       this.#setInspectorView("default");
@@ -6489,6 +6609,7 @@ export class BlueprintWorkspace {
       this.#refreshLuaOutput();
     } finally {
       this.isRestoring = false;
+      this.#startPeriodicUpdate();
     }
   }
 

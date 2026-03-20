@@ -30,7 +30,7 @@ export const ssetNode = createNodeModule(
         id: "color",
         name: "Color",
         direction: "input",
-        kind: "number",
+        kind: "color",
         defaultValue: 0,
       },
     ],

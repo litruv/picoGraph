@@ -302,7 +302,6 @@ export class WorkspaceHistoryManager {
     this.#pendingReason = null;
 
     this.#workspace.applySerializedWorkspace(snapshot.workspace);
-    this.#workspace.applyHistoryView(snapshot.view);
     this.#workspace.applyHistorySelection(snapshot.selection);
 
     this.isReady = wasReady;

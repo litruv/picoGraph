@@ -12,7 +12,8 @@
   "devDependencies": {
     "electron": "^30.0.0",
     "electron-builder": "^24.6.3",
-    "electron-icon-builder": "^2.0.1"
+    "electron-icon-builder": "^2.0.1",
+    "electron-reloader": "^1.2.3"
   },
   "build": {
     "appId": "com.litruv.picograph",
@@ -22,7 +23,8 @@
       "output": "dist"
     },
     "files": [
-      "**/*"
+      "**/*",
+      "!picotool/**/*"
     ],
     "win": {
       "icon": "build/icons/icon.ico",

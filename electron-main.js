@@ -1,3 +1,20 @@
+// Enable hot-reload during development
+try {
+  require('electron-reloader')(module, {
+    debug: false,
+    watchRenderer: true,
+    ignore: [
+      /node_modules/,
+      /\.git/,
+      /dist/,
+      /build/,
+      /pico8-temp-player\.html$/
+    ]
+  });
+} catch (_) { 
+  // Ignore errors in production (when electron-reloader isn't installed)
+}
+
 const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
@@ -51,6 +68,16 @@ function createMainWindow() {
 
   window.loadFile(path.join(__dirname, "index.html"));
 
+  // Open DevTools in development
+  window.webContents.openDevTools();
+
+  // Register F12 to toggle DevTools
+  window.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12') {
+      window.webContents.toggleDevTools();
+    }
+  });
+
   window.on("closed", () => {
     mainWindow = null;
   });
@@ -74,6 +101,39 @@ function registerIpcHandlers() {
     await fs.writeFile(outputPath, source, "utf8");
 
     return { filePath: outputPath };
+  });
+
+  ipcMain.handle("cart:preview", async (_event, cartContent) => {
+    if (typeof cartContent !== "string") {
+      throw new TypeError("Cart content must be a string");
+    }
+
+    const tempCartPath = path.join(app.getPath("temp"), `preview_${Date.now()}.p8`);
+    await fs.writeFile(tempCartPath, cartContent, "utf8");
+
+    return { filePath: tempCartPath };
+  });
+
+  ipcMain.handle("player:writeHtml", async (_event, htmlContent) => {
+    if (typeof htmlContent !== "string") {
+      throw new TypeError("HTML content must be a string");
+    }
+
+    const playerPath = path.join(__dirname, "public", "pico8-temp-player.html");
+    await fs.writeFile(playerPath, htmlContent, "utf8");
+
+    return { filePath: playerPath };
+  });
+
+  ipcMain.handle("player:writeCart", async (_event, cartContent) => {
+    if (typeof cartContent !== "string") {
+      throw new TypeError("Cart content must be a string");
+    }
+
+    const cartPath = path.join(__dirname, "public", "pico8-cart.p8");
+    await fs.writeFile(cartPath, cartContent, "utf8");
+
+    return { filePath: cartPath };
   });
 }
 

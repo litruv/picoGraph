@@ -152,6 +152,36 @@ export class WorkspaceNodeRenderer {
       article.classList.remove("is-hovered");
     });
 
+    article.addEventListener("pointerdown", (event) => {
+      if (event.button === 2) {
+        this.#workspace.navigationManager?.beginPan(event);
+      }
+    });
+
+    article.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (this.#workspace.navigationManager?.isPanRecent(300)) {
+        return;
+      }
+
+      const target = /** @type {EventTarget | null} */ (event.target);
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      if (target.closest(".pin")) {
+        return;
+      }
+
+      if (!this.#workspace.selectedNodeIds.has(node.id)) {
+        this.#callbacks.selectNode(node.id);
+      }
+
+      this.#workspace.nodeContextMenu.show(event.clientX, event.clientY, node.id);
+    });
+
     this.#workspace.nodeLayer.appendChild(article);
     this.#workspace.nodeElements.set(node.id, article);
     this.#inlineEditors.syncNode(node.id);

@@ -12,7 +12,7 @@ export const colorNode = createNodeModule(
     searchTags: ["color", "color", "ink", "draw"],
     inputs: [
       { id: "exec_in", name: "Exec", direction: "input", kind: "exec" },
-      { id: "color", name: "Color", direction: "input", kind: "number" },
+      { id: "color", name: "Color", direction: "input", kind: "color" },
     ],
     outputs: [
       { id: "exec_out", name: "Exec", direction: "output", kind: "exec" },

@@ -7,6 +7,7 @@ import { getVariableNode } from "./getVariable.js";
 import { numberLiteralNode } from "./numberLiteral.js";
 import { stringLiteralNode } from "./stringLiteral.js";
 import { booleanLiteralNode } from "./booleanLiteral.js";
+import { colorLiteralNode } from "./colorLiteral.js";
 import { addNumberNode } from "./addNumber.js";
 import { multiplyNumberNode } from "./multiplyNumber.js";
 import { compareNode } from "./compare.js";
@@ -31,6 +32,7 @@ import { serialNodes, serialFunctionChecklist } from "./serial/index.js";
 import { devkitNodes, devkitFunctionChecklist } from "./devkit/index.js";
 import { luaNodes, luaFunctionChecklist } from "./lua/index.js";
 import { localVariableNodes } from "./localVariables.js";
+import { converterNodes } from "./converters/index.js";
 
 export const nodeModules = [
   eventInitNode,
@@ -42,6 +44,7 @@ export const nodeModules = [
   numberLiteralNode,
   stringLiteralNode,
   booleanLiteralNode,
+  colorLiteralNode,
   addNumberNode,
   multiplyNumberNode,
   compareNode,
@@ -51,6 +54,7 @@ export const nodeModules = [
   customEventNode,
   callCustomEventNode,
   ...localVariableNodes,
+  ...converterNodes,
   ...graphicsNodes,
   ...systemNodes,
   ...tableNodes,
