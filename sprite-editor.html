@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PICO-8 Sprite Editor - Picograph</title>
+  <link rel="stylesheet" href="styles/main.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    #editor-container {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .sprite-editor-header {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--edge);
+    }
+    
+    .sprite-editor-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    
+    .sprite-editor-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
+    .sprite-editor-btn {
+      padding: 0.4rem 0.75rem;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="sprite-editor-header">
+    <div class="sprite-editor-title">🎨 Sprite Editor</div>
+    <div></div>
+    <div class="sprite-editor-actions">
+      <button class="sprite-editor-btn" id="export-btn">Export to .p8</button>
+      <button class="sprite-editor-btn" id="import-btn">Import from .p8</button>
+      <button class="sprite-editor-btn" id="save-json-btn">Save JSON</button>
+    </div>
+  </div>
+  
+  <div id="editor-container"></div>
+
+  <script type="module">
+    import { SpriteEditor } from './scripts/ui/SpriteEditor.js';
+    import { SpriteSheet } from './scripts/core/SpriteSheet.js';
+
+    // Initialize the sprite editor
+    const container = document.getElementById('editor-container');
+    const spriteSheet = new SpriteSheet();
+    const editor = new SpriteEditor(container, spriteSheet);
+
+    // Export to .p8 format
+    document.getElementById('export-btn').addEventListener('click', () => {
+      const gfxData = editor.getSpriteSheet().toP8Gfx();
+      const flagData = editor.getSpriteSheet().toP8Flags();
+      
+      const p8Content = `pico-8 cartridge // http://www.pico-8.com
+version 41
+__lua__
+-- your code here
+__gfx__
+${gfxData}
+__gff__
+${flagData}
+`;
+      
+      // Download the .p8 file
+      const blob = new Blob([p8Content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sprites.p8';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Import from .p8 format
+    document.getElementById('import-btn').addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.p8';
+      
+      input.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        
+        const text = await file.text();
+        
+        // Extract __gfx__ section
+        const gfxMatch = text.match(/__gfx__\s*\n([\s\S]*?)(?=\n__|$)/);
+        if (gfxMatch) {
+          editor.getSpriteSheet().fromP8Gfx(gfxMatch[1]);
+        }
+        
+        // Extract __gff__ section
+        const gffMatch = text.match(/__gff__\s*\n([\s\S]*?)(?=\n__|$)/);
+        if (gffMatch) {
+          editor.getSpriteSheet().fromP8Flags(gffMatch[1]);
+        }
+        
+        // Re-render
+        editor.setSpriteSheet(editor.getSpriteSheet());
+      });
+      
+      input.click();
+    });
+
+    // Save as JSON
+    document.getElementById('save-json-btn').addEventListener('click', () => {
+      const json = JSON.stringify(editor.getSpriteSheet().toJSON(), null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'sprites.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Example: Draw a smiley face on sprite 0
+    function drawExampleSprite() {
+      const sheet = editor.getSpriteSheet();
+      
+      // Draw a simple smiley face
+      // Face outline (yellow)
+      for (let x = 1; x < 7; x++) {
+        sheet.setPixel(x, 1, 10); // Top
+        sheet.setPixel(x, 6, 10); // Bottom
+      }
+      for (let y = 2; y < 6; y++) {
+        sheet.setPixel(1, y, 10); // Left
+        sheet.setPixel(6, y, 10); // Right
+      }
+      
+      // Eyes (black)
+      sheet.setPixel(2, 3, 0);
+      sheet.setPixel(5, 3, 0);
+      
+      // Smile (black)
+      sheet.setPixel(2, 5, 0);
+      sheet.setPixel(3, 5, 0);
+      sheet.setPixel(4, 5, 0);
+      sheet.setPixel(5, 5, 0);
+      
+      editor.setSpriteSheet(sheet);
+    }
+
+    // Uncomment to draw example sprite on load
+    // drawExampleSprite();
+
+    console.log('Sprite Editor initialized!');
+    console.log('Available tools: Pen, Fill, Line, Rect, Circle, Erase');
+    console.log('Click sprites in the sheet to edit them in the preview panel');
+  </script>
+</body>
+</html>

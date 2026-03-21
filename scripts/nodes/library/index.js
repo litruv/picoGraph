@@ -1,15 +1,10 @@
+import { getLiteralNodeModules } from "../../core/lua/LuaLiteralTypes.js";
 import { eventInitNode } from "./eventStart.js";
 import { eventUpdateNode } from "./eventUpdate.js";
 import { eventDrawNode } from "./eventDraw.js";
 import { printNode } from "./print.js";
 import { setVariableNode } from "./setVariable.js";
 import { getVariableNode } from "./getVariable.js";
-import { numberLiteralNode } from "./numberLiteral.js";
-import { stringLiteralNode } from "./stringLiteral.js";
-import { booleanLiteralNode } from "./booleanLiteral.js";
-import { colorLiteralNode } from "./colorLiteral.js";
-import { addNumberNode } from "./addNumber.js";
-import { multiplyNumberNode } from "./multiplyNumber.js";
 import { compareNode } from "./compare.js";
 import { sequenceNode } from "./sequence.js";
 import { ifNode } from "./ifNode.js";
@@ -33,20 +28,16 @@ import { devkitNodes, devkitFunctionChecklist } from "./devkit/index.js";
 import { luaNodes, luaFunctionChecklist } from "./lua/index.js";
 import { localVariableNodes } from "./localVariables.js";
 import { converterNodes } from "./converters/index.js";
+import { rerouteNode, rerouteExecNode } from "./reroute.js";
 
 export const nodeModules = [
+  ...getLiteralNodeModules(),
   eventInitNode,
   eventUpdateNode,
   eventDrawNode,
   printNode,
   setVariableNode,
   getVariableNode,
-  numberLiteralNode,
-  stringLiteralNode,
-  booleanLiteralNode,
-  colorLiteralNode,
-  addNumberNode,
-  multiplyNumberNode,
   compareNode,
   sequenceNode,
   ifNode,
@@ -55,6 +46,8 @@ export const nodeModules = [
   callCustomEventNode,
   ...localVariableNodes,
   ...converterNodes,
+  rerouteNode,
+  rerouteExecNode,
   ...graphicsNodes,
   ...systemNodes,
   ...tableNodes,

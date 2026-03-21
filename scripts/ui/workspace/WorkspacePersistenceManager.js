@@ -54,19 +54,31 @@ export class WorkspacePersistenceManager {
     }
 
     this.cancelScheduledPersist();
+    this.#workspace.handlePersistenceStateChange?.({
+      status: "pending",
+      source: "auto",
+    });
     this.#timerId = window.setTimeout(() => {
       this.#timerId = null;
-      this.persistImmediately();
+      this.persistImmediately("auto");
     }, 200);
   }
 
   /**
    * Serializes current workspace state and writes it to localStorage immediately.
+   *
+   * @param {'manual'|'auto'} [source]
    */
-  persistImmediately() {
+  persistImmediately(source = "manual") {
     if (!this.#storageAvailable || typeof window === "undefined") {
       return;
     }
+
+    this.cancelScheduledPersist();
+    this.#workspace.handlePersistenceStateChange?.({
+      status: "saving",
+      source,
+    });
 
     try {
       const payload = this.serializeWorkspace();
@@ -74,8 +86,16 @@ export class WorkspacePersistenceManager {
         WORKSPACE_STORAGE_KEY,
         JSON.stringify(payload)
       );
+      this.#workspace.handlePersistenceStateChange?.({
+        status: "saved",
+        source,
+      });
     } catch (error) {
       console.error("Failed to persist workspace state", error);
+      this.#workspace.handlePersistenceStateChange?.({
+        status: "error",
+        source,
+      });
     }
   }
 
@@ -90,7 +110,7 @@ export class WorkspacePersistenceManager {
       .filter((entry) => Boolean(entry))
       .map((entry) => {
         const variable =
-          /** @type {{ id: string, name: string, type: 'any'|'number'|'string'|'boolean'|'table', defaultValue: import('../BlueprintWorkspace.js').VariableDefaultValue }} */ (
+          /** @type {{ id: string, name: string, type: 'any'|'number'|'string'|'boolean'|'table'|'color', defaultValue: import('../BlueprintWorkspace.js').VariableDefaultValue }} */ (
             entry
           );
         return {

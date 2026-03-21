@@ -90,6 +90,8 @@ export const controllerButtonsNode = createNodeModule(
         name: "Button",
         direction: "input",
         kind: "number",
+        defaultValue: DEFAULT_BUTTON_VALUE,
+        options: BUTTON_OPTIONS,
         description: "Optional button index override",
       },
       {
@@ -97,6 +99,8 @@ export const controllerButtonsNode = createNodeModule(
         name: "Player",
         direction: "input",
         kind: "number",
+        defaultValue: DEFAULT_PLAYER_VALUE,
+        options: PLAYER_OPTIONS,
         description: "Optional player index override",
       },
     ],

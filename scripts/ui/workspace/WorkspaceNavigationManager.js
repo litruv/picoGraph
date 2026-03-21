@@ -106,10 +106,6 @@ export class WorkspaceNavigationManager {
     this.#targetZoomLevel = clamped;
     this.#zoomLevel = clamped;
     this.updateZoomDisplay(skipConnectionRender);
-    if (!silent) {
-      this.#markViewDirty("view", 200);
-      this.#schedulePersist();
-    }
     return true;
   }
 
@@ -151,6 +147,9 @@ export class WorkspaceNavigationManager {
 
   /**
    * Converts a screen-space point to workspace coordinates.
+   * Note: This returns screen coordinates divided by zoom only, without subtracting
+   * the background offset. This is intentional for zoom pivot calculations.
+   * For true world coordinates, use dragManager.clientToWorkspace().
    *
    * @param {{ x: number, y: number }} point Screen-space point relative to the workspace element.
    * @returns {{ x: number, y: number }}
@@ -273,8 +272,6 @@ export class WorkspaceNavigationManager {
       }
       // Restore clean scale-only transform now that node positions are committed.
       this.updateZoomDisplay(false);
-      this.#markViewDirty("view", 0);
-      this.#schedulePersist();
     } else {
       this.#smoothZoomRafId = requestAnimationFrame(() => this.#tickSmoothZoom());
     }
@@ -320,6 +317,7 @@ export class WorkspaceNavigationManager {
       this.#rebasePanGestureAfterZoom(pointer);
     }
 
+    this.updateZoomDisplay(true);
     this.#renderConnections();
   }
 
@@ -417,6 +415,7 @@ export class WorkspaceNavigationManager {
     });
 
     this.translateWorkspace(delta);
+    this.updateZoomDisplay(false);
     this.#workspace.selectNode(nodeId);
   }
 
@@ -489,30 +488,29 @@ export class WorkspaceNavigationManager {
     }
 
     targetZoom = Math.max(this.#zoomConfig.min, Math.min(this.#zoomConfig.max, targetZoom));
-    this.setZoomLevel(targetZoom);
 
     const contentCenter = {
       x: minX + boundsWidth / 2,
       y: minY + boundsHeight / 2,
     };
 
-    const viewportCenter = this.screenPointToWorld({
-      x: rect.width / 2,
-      y: rect.height / 2,
-    });
+    // Directly compute the background offset that places contentCenter at screen center,
+    // then set zoom + offset together so a single updateZoomDisplay call applies both.
+    const newOffsetX = rect.width / 2 / targetZoom - contentCenter.x;
+    const newOffsetY = rect.height / 2 / targetZoom - contentCenter.y;
 
-    const delta = {
-      x: viewportCenter.x - contentCenter.x,
-      y: viewportCenter.y - contentCenter.y,
-    };
-
-    if (Math.abs(delta.x) > 0.0001 || Math.abs(delta.y) > 0.0001) {
-      this.translateWorkspace(delta);
-      this.#renderConnections();
+    // Cancel any running smooth zoom before snapping.
+    if (this.#smoothZoomRafId !== null) {
+      cancelAnimationFrame(this.#smoothZoomRafId);
+      this.#smoothZoomRafId = null;
+      this.#smoothZoomFocus = null;
+      this.#pendingLayerOffset = { x: 0, y: 0 };
     }
 
-    this.#markViewDirty("view", 200);
-    this.#schedulePersist();
+    this.#targetZoomLevel = targetZoom;
+    this.#zoomLevel = targetZoom;
+    this.setBackgroundOffset({ x: newOffsetX, y: newOffsetY });
+    this.updateZoomDisplay(false);
   }
 
   /**
@@ -536,6 +534,7 @@ export class WorkspaceNavigationManager {
       startY: event.clientY,
       hasMoved: false,
       backgroundOrigin: { ...this.#backgroundOffset },
+      lastDelta: { x: 0, y: 0 },
     };
 
     const handlePointerMove = (moveEvent) => {
@@ -564,12 +563,14 @@ export class WorkspaceNavigationManager {
         return;
       }
 
+      this.#panState.lastDelta = worldDelta;
+
       const backgroundOffset = {
         x: this.#panState.backgroundOrigin.x + worldDelta.x,
         y: this.#panState.backgroundOrigin.y + worldDelta.y,
       };
       this.setBackgroundOffset(backgroundOffset);
-      this.updateZoomDisplay();
+      this.updateZoomDisplay(true);
     };
 
     const handlePointerUp = (upEvent) => {
@@ -589,6 +590,7 @@ export class WorkspaceNavigationManager {
       }
 
       this.#lastPanTimestamp = this.#timestamp();
+      this.#renderConnections();
     };
 
     this.#panState = state;

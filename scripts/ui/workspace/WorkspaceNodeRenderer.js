@@ -6,6 +6,7 @@
  */
 
 import { WorkspaceGeometry } from "./WorkspaceGeometry.js";
+import { getTypeColor } from "../../types/TypeRegistry.js";
 
 /**
  * @typedef {"input"|"output"} PinDirection
@@ -300,6 +301,7 @@ export class WorkspaceNodeRenderer {
     container.dataset.pinId = pin.id;
     container.dataset.nodeId = node.id;
     container.dataset.type = pin.kind;
+    container.style.setProperty("--pin-kind-color", getTypeColor(pin.kind));
     const isStandardExec =
       pin.kind === "exec" && (pin.id === "exec_in" || pin.id === "exec_out");
     if (isStandardExec) {

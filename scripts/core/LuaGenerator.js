@@ -1,3 +1,6 @@
+import { formatLiteral, defaultLiteralForKind } from './lua/LuaLiteralTypes.js';
+import { normalizeVariableType, getTypeConverter } from '../types/TypeRegistry.js';
+
 /**
  * @typedef {import('./NodeGraph.js').NodeGraph} NodeGraph
  */
@@ -278,7 +281,7 @@ export class LuaGenerator {
       findExecTargets: (pinId) => this.#findExecTargets(node.id, pinId),
       sanitizeIdentifier: (value) => this.#sanitizeIdentifier(String(value)),
       sanitizeOperator: (value) => this.#sanitizeOperator(String(value)),
-      formatLiteral: (kind, value) => this.#formatLiteral(kind, value),
+      formatLiteral,
     };
   }
 
@@ -338,7 +341,7 @@ export class LuaGenerator {
         this.#resolveValueInput(node, inputPinId, fallback),
       sanitizeIdentifier: (value) => this.#sanitizeIdentifier(String(value)),
       sanitizeOperator: (value) => this.#sanitizeOperator(String(value)),
-      formatLiteral: (kind, value) => this.#formatLiteral(kind, value),
+      formatLiteral,
     };
   }
 
@@ -516,7 +519,7 @@ export class LuaGenerator {
       const argEntries = signature.map((entry) => {
         const fallback = entry.optional
           ? "nil"
-          : this.#defaultLiteralForKind(entry.kind);
+          : defaultLiteralForKind(entry.kind);
         const value = this.#resolveValueInput(
           node,
           entry.inputPinId,
@@ -603,6 +606,49 @@ export class LuaGenerator {
   }
 
   /**
+   * Applies Lua type conversion when source and target types differ.
+   *
+   * @param {string} expression Source expression to convert.
+   * @param {string} fromType Source type identifier.
+   * @param {string} toType Target type identifier.
+   * @returns {string}
+   */
+  #applyTypeConversion(expression, fromType, toType) {
+    if (fromType === toType || toType === "any" || fromType === "any") {
+      return expression;
+    }
+
+    const converter = getTypeConverter(fromType, toType);
+    if (!converter) {
+      return expression;
+    }
+
+    // Generate Lua code for type conversions
+    if ((fromType === "number" || fromType === "color") && toType === "boolean") {
+      return `(${expression}) ~= 0`;
+    }
+    
+    if (fromType === "boolean" && toType === "number") {
+      return `((${expression}) and 1 or 0)`;
+    }
+
+    if (fromType === "boolean" && toType === "color") {
+      return `((${expression}) and 7 or 0)`;
+    }
+
+    if (fromType === "boolean" && toType === "string") {
+      return `((${expression}) and "true" or "false")`;
+    }
+
+    if (fromType === "number" && toType === "color") {
+      return `flr(${expression}) % 16`;
+    }
+
+    // No conversion needed for color to number (colors are numbers in PICO-8)
+    return expression;
+  }
+
+  /**
    * Resolves the expression bound to an input pin.
    *
    * @param {BlueprintNode} node Parent node.
@@ -613,7 +659,17 @@ export class LuaGenerator {
   #resolveValueInput(node, pinId, fallback) {
     const connection = this.#getConnectionTo(node.id, pinId);
     if (connection) {
-      return this.#evaluateValue(connection.from.nodeId, connection.from.pinId);
+      const sourceExpression = this.#evaluateValue(connection.from.nodeId, connection.from.pinId);
+      const targetPin = this.#findPin(node, pinId);
+      const targetType = targetPin?.kind ?? "any";
+      
+      // Get the actual source type, handling special cases like get_var
+      const sourceNode = this.nodes.get(connection.from.nodeId);
+      const sourceType = sourceNode 
+        ? this.#getOutputPinType(sourceNode, connection.from.pinId)
+        : connection.kind ?? "any";
+      
+      return this.#applyTypeConversion(sourceExpression, sourceType, targetType);
     }
 
     const pin = this.#findPin(node, pinId);
@@ -621,12 +677,12 @@ export class LuaGenerator {
     if (Object.prototype.hasOwnProperty.call(node.properties, inlineKey)) {
       const inlineValue = node.properties[inlineKey];
       if (inlineValue !== undefined && inlineValue !== null) {
-        return this.#formatLiteral(pin?.kind ?? "any", inlineValue);
+        return formatLiteral(pin?.kind ?? "any", inlineValue);
       }
     }
 
     if (pin && pin.defaultValue !== undefined && pin.defaultValue !== null) {
-      return this.#formatLiteral(pin.kind, pin.defaultValue);
+      return formatLiteral(pin.kind, pin.defaultValue);
     }
 
     return fallback;
@@ -691,24 +747,6 @@ export class LuaGenerator {
 
     if (expression === undefined) {
       switch (node.type) {
-        case "number_literal":
-          expression = this.#formatLiteral(
-            "number",
-            node.properties.value ?? 0
-          );
-          break;
-        case "string_literal":
-          expression = this.#formatLiteral(
-            "string",
-            node.properties.value ?? ""
-          );
-          break;
-        case "boolean_literal":
-          expression = this.#formatLiteral(
-            "boolean",
-            node.properties.value ?? "true"
-          );
-          break;
         case "get_var": {
           const name = this.#resolveWorkspaceVariableName(node);
           expression = name;
@@ -721,16 +759,30 @@ export class LuaGenerator {
           expression = parameterName ?? "nil";
           break;
         }
-        case "add_number": {
+        case "add_number":
+        case "math_add": {
           const a = this.#resolveValueInput(node, "a", "0");
           const b = this.#resolveValueInput(node, "b", "0");
           expression = `(${a}) + (${b})`;
           break;
         }
-        case "multiply_number": {
+        case "math_subtract": {
+          const a = this.#resolveValueInput(node, "a", "0");
+          const b = this.#resolveValueInput(node, "b", "0");
+          expression = `(${a}) - (${b})`;
+          break;
+        }
+        case "multiply_number":
+        case "math_multiply": {
           const a = this.#resolveValueInput(node, "a", "1");
           const b = this.#resolveValueInput(node, "b", "1");
           expression = `(${a}) * (${b})`;
+          break;
+        }
+        case "math_divide": {
+          const a = this.#resolveValueInput(node, "a", "0");
+          const b = this.#resolveValueInput(node, "b", "1");
+          expression = `(${a}) / (${b})`;
           break;
         }
         case "compare": {
@@ -786,60 +838,6 @@ export class LuaGenerator {
       return operator === "!=" ? "~=" : operator;
     }
     return "==";
-  }
-
-  /**
-   * Formats a literal based on pin kind.
-   *
-   * @param {string} kind Pin kind.
-   * @param {unknown} value Raw value.
-   * @returns {string}
-   */
-  #formatLiteral(kind, value) {
-    switch (kind) {
-      case "number": {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? String(numeric) : "0";
-      }
-      case "boolean": {
-        if (typeof value === "string") {
-          return value === "false" ? "false" : "true";
-        }
-        return value ? "true" : "false";
-      }
-      case "table": {
-        if (typeof value === "string") {
-          const trimmed = value.trim();
-          return trimmed.length ? trimmed : "{}";
-        }
-        return "{}";
-      }
-      case "string":
-        return JSON.stringify(String(value ?? ""));
-      default:
-        return JSON.stringify(String(value ?? ""));
-    }
-  }
-
-  /**
-   * Provides a default literal for the supplied pin kind.
-   *
-   * @param {string} kind Pin kind reference.
-   * @returns {string}
-   */
-  #defaultLiteralForKind(kind) {
-    switch (kind) {
-      case "number":
-        return "0";
-      case "boolean":
-        return "false";
-      case "string":
-        return '""';
-      case "table":
-        return "{}";
-      default:
-        return "nil";
-    }
   }
 
   /**
@@ -1012,14 +1010,11 @@ export class LuaGenerator {
     const value = variable?.defaultValue;
 
     switch (type) {
-      case "number": {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? String(numeric) : "0";
-      }
+      case "number":
       case "boolean":
-        return value ? "true" : "false";
       case "string":
-        return JSON.stringify(String(value ?? ""));
+      case "color":
+        return formatLiteral(type, value);
       case "table": {
         if (Array.isArray(value)) {
           const fragments = value
@@ -1138,25 +1133,45 @@ export class LuaGenerator {
   }
 
   /**
+   * Gets the type of a workspace variable by its ID.
+   *
+   * @param {string} variableId Variable identifier.
+   * @returns {string}
+   */
+  #getVariableType(variableId) {
+    const variable = this.variables.find((v) => v.id === variableId);
+    return variable?.type ?? "any";
+  }
+
+  /**
+   * Gets the output type for a node's output pin.
+   *
+   * @param {BlueprintNode} node Source node.
+   * @param {string} pinId Output pin identifier.
+   * @returns {string}
+   */
+  #getOutputPinType(node, pinId) {
+    // For get_var nodes, return the actual variable type
+    if (node.type === "get_var") {
+      const variableId = node.properties?.variableId;
+      if (variableId) {
+        return this.#getVariableType(variableId);
+      }
+    }
+
+    // Otherwise, use the pin's declared kind
+    const pin = this.#findPin(node, pinId);
+    return pin?.kind ?? "any";
+  }
+
+  /**
    * Normalizes a variable type descriptor.
    *
    * @param {unknown} value Candidate type.
    * @returns {string}
    */
   #normalizeVariableType(value) {
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      switch (normalized) {
-        case "number":
-        case "string":
-        case "boolean":
-        case "table":
-          return normalized;
-        default:
-          return "any";
-      }
-    }
-    return "any";
+    return normalizeVariableType(value);
   }
 
   /**

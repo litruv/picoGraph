@@ -1,4 +1,5 @@
 import { VARIABLE_SORT_MIME } from "../BlueprintWorkspaceConstants.js";
+import { getTypeColor } from "../../types/TypeRegistry.js";
 
 /**
  * Renders the global variable summary list.
@@ -225,6 +226,7 @@ export function renderVariableList({
     row.setAttribute("role", "button");
     row.dataset.variableId = variable.id;
     row.dataset.variableType = variable.type;
+    row.style.setProperty("--overview-variable-color", getTypeColor(variable.type));
     row.draggable = true;
     row.setAttribute("aria-pressed", "false");
 
@@ -330,6 +332,7 @@ export function renderVariableList({
     typeButton.type = "button";
     typeButton.className = "variable-type-button";
     typeButton.dataset.variableType = variable.type;
+    typeButton.style.setProperty("--overview-variable-color", getTypeColor(variable.type));
     typeButton.setAttribute("aria-haspopup", "menu");
     typeButton.setAttribute("aria-expanded", "false");
     typeButton.title = `Type: ${formatVariableType(variable.type)}`;

@@ -331,7 +331,7 @@ export class EmbeddedPreview {
     const fallback = (hasUpdateCallback && hasDrawCallback) ? '' :
       (!hasUpdateCallback ? '\nfunction _update()\nend\n' : '') +
       (!hasDrawCallback ? '\nfunction _draw()\n cls()\n print("picograph ok",2,60,7)\nend\n' : '');
-    return `pico-8 cartridge // http://www.pico-8.com
+    const content = `pico-8 cartridge // http://www.pico-8.com
 version 41
 __lua__
 ${luaCode}${fallback}
@@ -345,6 +345,8 @@ __gfx__
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 `;
+    // Ensure Unix line endings (PICO-8 tools expect \n, not \r\n)
+    return content.replace(/\r\n/g, '\n');
   }
 
   /**

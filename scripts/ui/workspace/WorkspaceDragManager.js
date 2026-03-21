@@ -49,6 +49,7 @@ export class WorkspaceDragManager {
 
   /**
    * Updates the palette ghost transform to match the supplied position.
+   * The ghost is offset so the cursor appears at its center.
    *
    * @param {{ x: number, y: number }} position Snapped workspace position.
    */
@@ -57,8 +58,14 @@ export class WorkspaceDragManager {
     if (!paletteDragGhost) {
       return;
     }
+    const width = paletteDragGhost.width || 220;
+    const height = paletteDragGhost.height || 140;
+    const centered = {
+      x: position.x - width / 2,
+      y: position.y - height / 2,
+    };
     paletteDragGhost.element.style.transform =
-      WorkspaceGeometry.positionToTransform(position);
+      WorkspaceGeometry.positionToTransform(centered);
   }
 
   /**
@@ -210,7 +217,7 @@ export class WorkspaceDragManager {
       return;
     }
 
-    const pointerWorld = this.#clientToWorkspace(
+    const pointerWorld = this.clientToWorkspace(
       hasClientX ? pointer.clientX : context.previousClientX,
       hasClientY ? pointer.clientY : context.previousClientY
     );
@@ -526,7 +533,7 @@ export class WorkspaceDragManager {
    * @returns {{ x: number, y: number }}
    */
   #eventToWorkspacePoint(event) {
-    return this.#clientToWorkspace(event.clientX, event.clientY);
+    return this.clientToWorkspace(event.clientX, event.clientY);
   }
 
   /**
@@ -560,15 +567,20 @@ export class WorkspaceDragManager {
    * @param {number | undefined} clientY Viewport Y coordinate.
    * @returns {{ x: number, y: number }}
    */
-  #clientToWorkspace(clientX, clientY) {
+  clientToWorkspace(clientX, clientY) {
     const rect = this.workspace.workspaceElement.getBoundingClientRect();
-    const zoom = this.workspace.zoomLevel || 1;
+    const zoom = this.workspace.navigationManager?.getZoomLevel() ?? this.workspace.zoomLevel ?? 1;
+    const clampedZoom = Math.max(0.01, zoom);
     const safeX = Number.isFinite(clientX) ? clientX : rect.left;
     const safeY = Number.isFinite(clientY) ? clientY : rect.top;
-    const pending = this.workspace.navigationManager?.getPendingLayerOffset?.() ?? { x: 0, y: 0 };
+    const effectiveOffset = this.workspace.navigationManager?.getEffectiveOffset?.();
+    const offset = {
+      x: Number.isFinite(effectiveOffset?.x) ? effectiveOffset.x : 0,
+      y: Number.isFinite(effectiveOffset?.y) ? effectiveOffset.y : 0,
+    };
     return {
-      x: (safeX - rect.left) / zoom - pending.x,
-      y: (safeY - rect.top) / zoom - pending.y,
+      x: (safeX - rect.left) / clampedZoom - offset.x,
+      y: (safeY - rect.top) / clampedZoom - offset.y,
     };
   }
 

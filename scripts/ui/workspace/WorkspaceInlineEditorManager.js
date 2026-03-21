@@ -1,3 +1,6 @@
+import { createColorSwatchPicker } from '../ColorSwatchPicker.js';
+import { getTypeColor } from '../../types/TypeRegistry.js';
+
 /** @typedef {import('../../core/BlueprintNode.js').BlueprintNode} BlueprintNode */
 /** @typedef {import('../../core/BlueprintNode.js').PinDescriptor} PinDescriptor */
 /** @typedef {import('../../core/NodeGraph.js').NodeGraph} NodeGraph */
@@ -75,6 +78,7 @@ export class WorkspaceInlineEditorManager {
       "number_literal",
       "string_literal",
       "boolean_literal",
+      "color_literal",
     ]);
     if (!supported.has(node.type)) {
       return null;
@@ -100,6 +104,27 @@ export class WorkspaceInlineEditorManager {
     editor.appendChild(label);
 
     const graph = this.#getGraph();
+
+    if (node.type === "color_literal") {
+      const picker = createColorSwatchPicker({
+        id: controlId,
+        value: node.properties.value ?? 7,
+        onChange: (index) => {
+          graph.setNodeProperty(node.id, "value", index);
+        },
+      });
+      editor.appendChild(picker.element);
+
+      const setValue = (rawValue) => {
+        const n = Number(rawValue);
+        picker.setValue(Number.isFinite(n) ? n : 7);
+      };
+
+      const entry = this.#ensureEntry(node.id);
+      entry.literal = { setValue };
+      return entry.literal;
+    }
+
     let control;
     const commitNumber = () => {
       const numeric = Number(control.value);
@@ -176,6 +201,7 @@ export class WorkspaceInlineEditorManager {
       { value: "string", label: "String" },
       { value: "boolean", label: "Boolean" },
       { value: "table", label: "Table" },
+      { value: "color", label: "Color" },
     ];
 
     const ensureBody = () => {
@@ -274,6 +300,8 @@ export class WorkspaceInlineEditorManager {
           return "valueBoolean";
         case "table":
           return "valueTable";
+        case "color":
+          return "valueColor";
         case "number":
         default:
           return "valueNumber";
@@ -288,6 +316,8 @@ export class WorkspaceInlineEditorManager {
           return "string";
         case "table":
           return "table";
+        case "color":
+          return "color";
         default:
           return "number";
       }
@@ -301,6 +331,8 @@ export class WorkspaceInlineEditorManager {
           return false;
         case "table":
           return "{}";
+        case "color":
+          return 7;
         case "number":
         default:
           return 0;
@@ -313,6 +345,7 @@ export class WorkspaceInlineEditorManager {
       const normalized = normalizeType(type);
       activeType = normalized;
       typeButton.dataset.variableType = normalized;
+      typeButton.style.setProperty("--overview-variable-color", getTypeColor(normalized));
       const label = formatType(normalized);
       typeButton.title = `Type: ${label}`;
       typeButton.setAttribute(
@@ -378,6 +411,20 @@ export class WorkspaceInlineEditorManager {
             graph.setNodeProperty(currentNode.id, key, textarea.value);
           });
           control = textarea;
+        } else if (desiredKind === "color") {
+          const rawColor = currentNode.properties?.[key];
+          const n = Number(rawColor);
+          const initialIndex = Number.isFinite(n) ? Math.max(0, Math.min(15, Math.round(n))) : 7;
+          const picker = createColorSwatchPicker({
+            value: initialIndex,
+            onChange: (index) => {
+              graph.setNodeProperty(currentNode.id, key, index);
+            },
+          });
+          picker.element.dataset.localValueKind = "color";
+          /** @type {any} */ (picker.element)._setColorValue = picker.setValue;
+          valueField.appendChild(picker.element);
+          return picker.element;
         } else {
           const numberInput = document.createElement("input");
           numberInput.type = "number";
@@ -407,6 +454,10 @@ export class WorkspaceInlineEditorManager {
         if (control.value !== nextValue) {
           control.value = nextValue;
         }
+      } else if (/** @type {any} */ (control)._setColorValue) {
+        const n = Number(current);
+        const index = Number.isFinite(n) ? Math.max(0, Math.min(15, Math.round(n))) : 7;
+        /** @type {any} */ (control)._setColorValue(index);
       } else if (control instanceof HTMLTextAreaElement) {
         const nextValue = typeof current === "string" ? current : "{}";
         if (control.value !== nextValue) {
@@ -534,18 +585,10 @@ export class WorkspaceInlineEditorManager {
     }
 
     const isIfCondition = node.type === "if" && pin.id === "condition";
-    const isExtcmdCommand =
-      node.type === "system_extcmd" && pin.id === "command";
-    const isNamedButtonSelector =
-      node.type === "input_button_constants" && pin.id === "button";
-    const isNamedPlayerSelector =
-      node.type === "input_button_constants" && pin.id === "player";
-    if (
-      !isIfCondition &&
-      !isExtcmdCommand &&
-      !isNamedButtonSelector &&
-      !isNamedPlayerSelector
-    ) {
+    const isColorPin = pin.kind === "color";
+    const pinOptions =
+      Array.isArray(pin.options) && pin.options.length > 0 ? pin.options : null;
+    if (!isIfCondition && !pinOptions && !isColorPin) {
       container.classList.remove("has-inline-dropdown");
       return;
     }
@@ -555,31 +598,14 @@ export class WorkspaceInlineEditorManager {
     const graph = this.#getGraph();
 
     if (!(propertyKey in node.properties)) {
-      if (isExtcmdCommand || isNamedButtonSelector || isNamedPlayerSelector) {
-        const definition = this.registry.get(node.type);
-        const targetKey = isExtcmdCommand
-          ? "command"
-          : isNamedButtonSelector
-          ? "button"
-          : "player";
-        const schema = definition?.properties?.find(
-          (prop) => prop.key === targetKey
-        );
-        const options = Array.isArray(schema?.options) ? schema.options : [];
-        const defaultOption =
-          typeof node.properties[targetKey] === "string"
-            ? node.properties[targetKey]
-            : String(schema?.defaultValue ?? options[0]?.value ?? "");
-        if (typeof node.properties[targetKey] !== "string") {
-          node.properties[targetKey] = defaultOption;
-        }
-        if (isExtcmdCommand) {
-          node.properties[propertyKey] = defaultOption;
-        } else {
-          const numericDefault = Number.parseInt(defaultOption, 10);
-          node.properties[propertyKey] = Number.isFinite(numericDefault)
-            ? numericDefault
-            : 0;
+      if (pinOptions) {
+        const defaultStr =
+          pin.defaultValue != null
+            ? String(pin.defaultValue)
+            : String(pinOptions[0]?.value ?? "");
+        node.properties[propertyKey] = defaultStr;
+        if (!(pin.id in node.properties)) {
+          node.properties[pin.id] = defaultStr;
         }
       } else {
         node.properties[propertyKey] = this.#defaultValueForPin(pin);
@@ -591,7 +617,7 @@ export class WorkspaceInlineEditorManager {
     });
 
     let wrapper;
-    if (isExtcmdCommand || isNamedButtonSelector || isNamedPlayerSelector) {
+    if (pinOptions) {
       wrapper = document.createElement("div");
       wrapper.className = "pin-inline-control pin-inline-dropdown";
       container.appendChild(wrapper);
@@ -631,29 +657,14 @@ export class WorkspaceInlineEditorManager {
       return;
     }
 
-    if (isExtcmdCommand || isNamedButtonSelector || isNamedPlayerSelector) {
-      const definition = this.registry.get(node.type);
-      const targetKey = isExtcmdCommand
-        ? "command"
-        : isNamedButtonSelector
-        ? "button"
-        : "player";
-      const schema = definition?.properties?.find(
-        (prop) => prop.key === targetKey
-      );
-      const options = Array.isArray(schema?.options) ? schema.options : [];
+    if (pinOptions) {
+      const optionValues = pinOptions.map((o) => String(o.value));
 
       const select = document.createElement("select");
       select.className = "pin-inline-select";
-      const ariaLabel = isExtcmdCommand
-        ? "Command"
-        : isNamedButtonSelector
-        ? "Button"
-        : "Player";
-      select.setAttribute("aria-label", ariaLabel);
+      select.setAttribute("aria-label", pin.name || pin.id);
 
-      const values = options.map((option) => String(option.value));
-      options.forEach((option) => {
+      pinOptions.forEach((option) => {
         const element = document.createElement("option");
         element.value = String(option.value);
         element.textContent = option.label ?? String(option.value);
@@ -661,30 +672,14 @@ export class WorkspaceInlineEditorManager {
       });
 
       const normalizeValue = (value) => {
-        const candidate =
-          typeof value === "string" ? value : String(value ?? "");
-        if (values.length === 0) {
-          return candidate;
-        }
-        if (values.includes(candidate)) {
-          return candidate;
-        }
-        const schemaDefault =
-          schema?.defaultValue != null ? String(schema.defaultValue) : null;
-        if (schemaDefault && values.includes(schemaDefault)) {
-          return schemaDefault;
-        }
-        return values[0];
+        const candidate = value == null ? "" : String(value);
+        return optionValues.includes(candidate)
+          ? candidate
+          : (optionValues[0] ?? "");
       };
 
       const setValue = (value) => {
-        const normalized = normalizeValue(
-          (isNamedButtonSelector || isNamedPlayerSelector) &&
-            typeof node.properties[targetKey] === "string"
-            ? node.properties[targetKey]
-            : value
-        );
-        select.value = normalized;
+        select.value = normalizeValue(value);
       };
 
       const setConnected = (connected) => {
@@ -694,22 +689,41 @@ export class WorkspaceInlineEditorManager {
 
       select.addEventListener("change", () => {
         const nextValue = select.value;
-        if (isExtcmdCommand) {
-          graph.setNodeProperty(node.id, propertyKey, nextValue);
-          graph.setNodeProperty(node.id, "command", nextValue);
-        } else {
-          const normalized = normalizeValue(nextValue);
-          const numeric = Number.parseInt(normalized, 10);
-          graph.setNodeProperty(
-            node.id,
-            propertyKey,
-            Number.isFinite(numeric) ? numeric : 0
-          );
-          graph.setNodeProperty(node.id, targetKey, normalized);
-        }
+        graph.setNodeProperty(node.id, propertyKey, nextValue);
+        graph.setNodeProperty(node.id, pin.id, nextValue);
       });
 
       wrapper.appendChild(select);
+
+      entry.pinEditors.set(pin.id, { setValue, setConnected });
+      setValue(node.properties[propertyKey]);
+      setConnected(this.#hasConnection(node.id, pin.id));
+      return;
+    }
+
+    if (isColorPin) {
+      const rawDefault = node.properties[propertyKey];
+      const n = Number(rawDefault);
+      const initialIndex = Number.isFinite(n)
+        ? Math.max(0, Math.min(15, Math.round(n)))
+        : 7;
+
+      const picker = createColorSwatchPicker({
+        value: initialIndex,
+        onChange: (index) => {
+          graph.setNodeProperty(node.id, propertyKey, index);
+        },
+      });
+      wrapper.appendChild(picker.element);
+
+      const setValue = (value) => {
+        const num = Number(value);
+        picker.setValue(Number.isFinite(num) ? num : 7);
+      };
+
+      const setConnected = (connected) => {
+        wrapper.classList.toggle("is-hidden", connected);
+      };
 
       entry.pinEditors.set(pin.id, { setValue, setConnected });
       setValue(node.properties[propertyKey]);
@@ -765,45 +779,12 @@ export class WorkspaceInlineEditorManager {
       const propertyKey = this.#pinPropertyKey(pinId);
       let value;
 
-      if (node.type === "system_extcmd" && pinId === "command") {
-        const commandValue =
-          typeof node.properties.command === "string"
-            ? node.properties.command
-            : null;
-        if (
-          commandValue !== null &&
-          node.properties[propertyKey] !== commandValue
-        ) {
-          node.properties[propertyKey] = commandValue;
-        }
-      } else if (node.type === "input_button_constants") {
-        if (pinId === "button") {
-          const rawButton =
-            typeof node.properties.button === "string"
-              ? node.properties.button
-              : null;
-          if (rawButton !== null) {
-            const numericButton = Number.parseInt(rawButton, 10);
-            const safeButton = Number.isFinite(numericButton)
-              ? numericButton
-              : 0;
-            if (node.properties[propertyKey] !== safeButton) {
-              node.properties[propertyKey] = safeButton;
-            }
-          }
-        } else if (pinId === "player") {
-          const rawPlayer =
-            typeof node.properties.player === "string"
-              ? node.properties.player
-              : null;
-          if (rawPlayer !== null) {
-            const numericPlayer = Number.parseInt(rawPlayer, 10);
-            const safePlayer = Number.isFinite(numericPlayer)
-              ? numericPlayer
-              : 0;
-            if (node.properties[propertyKey] !== safePlayer) {
-              node.properties[propertyKey] = safePlayer;
-            }
+      if (Array.isArray(pin?.options) && pin.options.length > 0) {
+        const canonical = node.properties[pinId];
+        if (canonical != null) {
+          const strValue = String(canonical);
+          if (node.properties[propertyKey] !== strValue) {
+            node.properties[propertyKey] = strValue;
           }
         }
       }
@@ -905,6 +886,8 @@ export class WorkspaceInlineEditorManager {
         return 0;
       case "string":
         return "";
+      case "color":
+        return 7;
       default:
         return null;
     }

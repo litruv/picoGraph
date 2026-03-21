@@ -1,19 +1,17 @@
 import { createNodeModule } from "../nodeTypes.js";
+import {
+  getLocalVariableTypeOptions,
+  variablePropertyKey,
+  localVariableDefault,
+  LOCAL_VARIABLE_TYPE_IDS,
+} from "../../types/TypeRegistry.js";
 
-const LOCAL_TYPES = [
-  { value: "number", label: "Number" },
-  { value: "string", label: "String" },
-  { value: "boolean", label: "Boolean" },
-  { value: "table", label: "Table" },
-];
-
+const LOCAL_TYPES = getLocalVariableTypeOptions();
 const DEFAULT_LOCAL_TYPE = LOCAL_TYPES[0]?.value ?? "number";
 
 const sanitizeType = (raw) => {
-  const candidate = typeof raw === "string" ? raw.toLowerCase() : DEFAULT_LOCAL_TYPE;
-  return LOCAL_TYPES.some((entry) => entry.value === candidate)
-    ? candidate
-    : DEFAULT_LOCAL_TYPE;
+  const candidate = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return LOCAL_VARIABLE_TYPE_IDS.has(candidate) ? candidate : DEFAULT_LOCAL_TYPE;
 };
 
 const ensureName = (raw, fallback = "localVar") => {
@@ -21,33 +19,10 @@ const ensureName = (raw, fallback = "localVar") => {
   return value.length ? value : fallback;
 };
 
-const resolveValuePropertyKey = (type) => {
-  switch (type) {
-    case "string":
-      return "valueString";
-    case "boolean":
-      return "valueBoolean";
-    case "table":
-      return "valueTable";
-    case "number":
-    default:
-      return "valueNumber";
-  }
-};
+const resolveValuePropertyKey = variablePropertyKey;
 
-const defaultValueForType = (type) => {
-  switch (type) {
-    case "string":
-      return "";
-    case "boolean":
-      return false;
-    case "table":
-      return "{}";
-    case "number":
-    default:
-      return 0;
-  }
-};
+const defaultValueForType = localVariableDefault;
+
 
 const initializeLocalProperties = (properties, { includeValue }) => {
   const type = sanitizeType(properties.variableType);
@@ -67,6 +42,15 @@ const initializeLocalProperties = (properties, { includeValue }) => {
   }
   if (typeof properties.valueTable !== "string") {
     properties.valueTable = String(properties.valueTable ?? "{}");
+  }
+  if (
+    typeof properties.valueColor !== "number" ||
+    !Number.isFinite(properties.valueColor)
+  ) {
+    const n = Number(properties.valueColor);
+    properties.valueColor = Number.isFinite(n)
+      ? Math.max(0, Math.min(15, Math.round(n)))
+      : 7;
   }
 
   if (includeValue) {

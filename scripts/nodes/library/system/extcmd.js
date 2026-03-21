@@ -41,7 +41,7 @@ export const extcmdNode = createNodeModule(
     ],
     inputs: [
       { id: "exec_in", name: "Exec", direction: "input", kind: "exec" },
-      { id: "command", name: "Command", direction: "input", kind: "string" },
+      { id: "command", name: "Command", direction: "input", kind: "string", defaultValue: EXT_CMD_DEFAULT, options: EXT_CMD_OPTIONS },
       { id: "param1", name: "Param 1", direction: "input", kind: "number" },
       { id: "param2", name: "Param 2", direction: "input", kind: "number" },
     ],

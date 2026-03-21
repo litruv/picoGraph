@@ -90,10 +90,12 @@ export class WorkspaceWireCutManager {
    */
   #clientToSvg(clientX, clientY) {
     const zoom = this.#workspace.zoomLevel || 1;
+    const offset = this.#workspace.navigationManager?.getEffectiveOffset() ?? 
+                   this.#workspace.workspaceBackgroundOffset ?? { x: 0, y: 0 };
     const rect = this.#workspace.workspaceElement.getBoundingClientRect();
     return {
-      x: (clientX - rect.left) / zoom,
-      y: (clientY - rect.top) / zoom,
+      x: (clientX - rect.left) / zoom - offset.x,
+      y: (clientY - rect.top) / zoom - offset.y,
     };
   }
 

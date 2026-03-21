@@ -1,5 +1,6 @@
 import { BlueprintNode } from "./BlueprintNode.js";
 import { Connection } from "./Connection.js";
+import { areTypesCompatible } from "../types/TypeRegistry.js";
 
 /** @typedef {import('./BlueprintNode.js').BlueprintNodeInit} BlueprintNodeInit */
 /** @typedef {import('./BlueprintNode.js').PinDescriptor} PinDescriptor */
@@ -321,11 +322,7 @@ export class NodeGraph extends EventTarget {
       return false;
     }
 
-    if (
-      toPin.kind !== "any" &&
-      fromPin.kind !== "any" &&
-      fromPin.kind !== toPin.kind
-    ) {
+    if (!areTypesCompatible(fromPin.kind, toPin.kind)) {
       return false;
     }
 

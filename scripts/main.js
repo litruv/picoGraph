@@ -2,6 +2,7 @@ import { BlueprintWorkspace } from "./ui/BlueprintWorkspace.js";
 import { NodeRegistry } from "./nodes/NodeRegistry.js";
 import { LuaGenerator } from "./core/LuaGenerator.js";
 import { EmbeddedPreview } from "./ui/EmbeddedPreview.js";
+import { TileManager } from "./ui/TileManager.js";
 
 // Global error handlers
 window.addEventListener('error', (event) => {
@@ -13,7 +14,18 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 /**
- * @typedef {{ compileLua(source: string): Promise<{ filePath: string }> }} ElectronAPI
+ * @typedef {{
+ *   compileLua(source: string): Promise<{ filePath: string }>;
+ *   previewCart?(cartContent: string): Promise<{ filePath: string }>;
+ *   writePlayerHtml?(htmlContent: string): Promise<{ filePath: string }>;
+ *   writePlayerCart?(cartContent: string): Promise<{ filePath: string }>;
+ *   getCartStats?(cartContent: string): Promise<{ tokens: number, lines: number, chars: number, rawOutput: string }>;
+ *   minimizeWindow?(): Promise<void>;
+ *   toggleMaximizeWindow?(): Promise<boolean>;
+ *   closeWindow?(): Promise<void>;
+ *   getWindowMaximized?(): Promise<boolean>;
+ *   onWindowMaximizedChanged?(callback: (isMaximized: boolean) => void): () => void;
+ * }} ElectronAPI
  */
 
 /**
@@ -80,8 +92,8 @@ const deleteNodeButton = /** @type {HTMLButtonElement} */ (
     "deleteNodeButton"
   )
 );
-const compileButton = /** @type {HTMLButtonElement} */ (
-  requireElement(document.getElementById("compileButton"), "compileButton")
+const saveButton = /** @type {HTMLButtonElement} */ (
+  requireElement(document.getElementById("saveButton"), "saveButton")
 );
 const previewButton = /** @type {HTMLButtonElement} */ (
   requireElement(document.getElementById("previewButton"), "previewButton")
@@ -107,6 +119,24 @@ const frameSelectionButton = /** @type {HTMLButtonElement} */ (
     "frameSelectionButton"
   )
 );
+const windowControls = /** @type {HTMLElement} */ (
+  requireElement(document.getElementById("windowControls"), "windowControls")
+);
+const minimizeWindowButton = /** @type {HTMLButtonElement} */ (
+  requireElement(
+    document.getElementById("minimizeWindowButton"),
+    "minimizeWindowButton"
+  )
+);
+const maximizeWindowButton = /** @type {HTMLButtonElement} */ (
+  requireElement(
+    document.getElementById("maximizeWindowButton"),
+    "maximizeWindowButton"
+  )
+);
+const closeWindowButton = /** @type {HTMLButtonElement} */ (
+  requireElement(document.getElementById("closeWindowButton"), "closeWindowButton")
+);
 const luaModal = /** @type {HTMLElement} */ (
   requireElement(document.getElementById("luaModal"), "luaModal")
 );
@@ -128,6 +158,12 @@ const closeLuaModalButton = /** @type {HTMLButtonElement} */ (
     "closeLuaModalButton"
   )
 );
+const tileManagerButton = /** @type {HTMLButtonElement} */ (
+  requireElement(
+    document.getElementById("tileManagerButton"),
+    "tileManagerButton"
+  )
+);
 
 const registry = new NodeRegistry();
 const generator = new LuaGenerator(registry);
@@ -146,6 +182,7 @@ const workspace = new BlueprintWorkspace({
   eventList,
   variableList,
   addVariableButton,
+  saveButton,
   projectSettingsButton,
   paletteToggleButton,
   appBodyElement,
@@ -161,11 +198,98 @@ const embeddedPreview = new EmbeddedPreview({
   },
 });
 
+// Initialize tile manager
+const tileManager = new TileManager();
+tileManager.initialize();
+
 /** @type {ElectronAPI | undefined} */
 const electronAPI =
   typeof window !== "undefined" && "electronAPI" in window
     ? /** @type {ElectronAPI} */ (window.electronAPI)
     : undefined;
+
+// Get titlebar element
+const titleBarElement = document.querySelector('.header-title');
+
+/**
+ * Updates the window titlebar with token count information.
+ *
+ * @param {number} tokenCount Number of tokens in the cart
+ */
+function updateTitleBarWithTokens(tokenCount) {
+  if (titleBarElement) {
+    const maxTokens = 8192;
+    const percentage = ((tokenCount / maxTokens) * 100).toFixed(1);
+    titleBarElement.textContent = `picoGraph - ${tokenCount} / ${maxTokens} tokens (${percentage}%)`;
+  }
+}
+
+/**
+ * Generates cart content from Lua code.
+ *
+ * @param {string} luaCode Generated Lua code
+ * @returns {string}
+ */
+function generateCartContent(luaCode) {
+  const hasUpdateCallback = /function\s+_update(?:60)?\b|_update(?:60)?\s*=/.test(luaCode);
+  const hasDrawCallback = /function\s+_draw\b|_draw\s*=/.test(luaCode);
+  const fallback = (hasUpdateCallback && hasDrawCallback) ? '' :
+    (!hasUpdateCallback ? '\nfunction _update()\nend\n' : '') +
+    (!hasDrawCallback ? '\nfunction _draw()\n cls()\n print("picograph ok",2,60,7)\nend\n' : '');
+  return `pico-8 cartridge // http://www.pico-8.com
+version 41
+__lua__
+${luaCode}${fallback}
+__gfx__
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+`;
+}
+
+/**
+ * Updates token count display after workspace changes.
+ */
+async function updateTokenCount() {
+  if (!electronAPI?.getCartStats) {
+    return;
+  }
+
+  try {
+    const luaCode = workspace.exportLua();
+    let cartContent = generateCartContent(luaCode);
+    // Ensure Unix line endings (p8tool requires \n, not \r\n)
+    cartContent = cartContent.replace(/\r\n/g, '\n');
+    const stats = await electronAPI.getCartStats(cartContent);
+    updateTitleBarWithTokens(stats.tokens);
+  } catch (error) {
+    console.error("Failed to update token count:", error);
+    if (titleBarElement) {
+      titleBarElement.textContent = "picoGraph";
+    }
+  }
+}
+
+// Override handlePersistenceStateChange to also update token count
+const originalHandlePersistenceStateChange = workspace.handlePersistenceStateChange.bind(workspace);
+workspace.handlePersistenceStateChange = function(state) {
+  originalHandlePersistenceStateChange(state);
+  
+  // Update token count when save completes (both auto and manual)
+  if (state?.status === "saved") {
+    updateTokenCount();
+  }
+};
+
+// Initial token count update after workspace loads
+if (electronAPI?.getCartStats) {
+  updateTokenCount();
+}
 
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
@@ -232,7 +356,6 @@ let isLuaModalOpen = false;
 let lastFocusedElement = /** @type {HTMLElement | null} */ (null);
 let copyFeedbackTimeout = /** @type {number | null} */ (null);
 let currentLuaSource = "";
-let compileFeedbackTimeout = /** @type {number | null} */ (null);
 
 const scheduleMicrotask = (callback) => {
   if (typeof queueMicrotask === "function") {
@@ -374,82 +497,68 @@ const closeLuaModal = () => {
   }
 };
 
-/**
- * Restores the compile button to its idle appearance.
- *
- * @returns {void}
- */
-const resetCompileButton = () => {
-  if (compileFeedbackTimeout !== null) {
-    window.clearTimeout(compileFeedbackTimeout);
-    compileFeedbackTimeout = null;
-  }
-
-  compileButton.classList.remove("is-success", "is-error", "is-busy");
-  compileButton.disabled = false;
-  compileButton.textContent = "Compile";
-};
-
-/**
- * Handles compile button clicks by requesting a Lua export from Electron.
- *
- * @returns {Promise<void>}
- */
-const handleCompileClick = async () => {
-  if (!electronAPI) {
-    return;
-  }
-
-  if (compileFeedbackTimeout !== null) {
-    window.clearTimeout(compileFeedbackTimeout);
-    compileFeedbackTimeout = null;
-  }
-
-  compileButton.classList.remove("is-success", "is-error");
-  compileButton.classList.add("is-busy");
-  compileButton.disabled = true;
-  compileButton.textContent = "Compiling...";
-
-  const source = workspace.exportLua();
-
-  try {
-    const result = await electronAPI.compileLua(source);
-    console.info("Lua compiled to", result.filePath);
-    compileButton.classList.remove("is-busy");
-    compileButton.classList.add("is-success");
-    compileButton.disabled = false;
-    compileButton.textContent = "Compiled!";
-    compileFeedbackTimeout = window.setTimeout(() => {
-      resetCompileButton();
-    }, 1800);
-  } catch (error) {
-    console.error("Failed to compile Lua", error);
-    compileButton.classList.remove("is-busy");
-    compileButton.classList.add("is-error");
-    compileButton.disabled = false;
-    compileButton.textContent = "Failed";
-    compileFeedbackTimeout = window.setTimeout(() => {
-      resetCompileButton();
-    }, 2200);
-  }
-};
-
-if (electronAPI && typeof electronAPI.compileLua === "function") {
-  compileButton.disabled = false;
-  compileButton.addEventListener("click", () => {
-    handleCompileClick().catch((error) => {
-      console.error("Unhandled compile error", error);
-      resetCompileButton();
-    });
-  });
-} else {
-  compileButton.disabled = true;
-  compileButton.title = "Compile is available in the desktop app";
-}
-
 previewButton.addEventListener("click", () => {
   embeddedPreview.open();
 });
+
+const setMaximizeButtonState = (isMaximized) => {
+  maximizeWindowButton.classList.toggle("is-active", Boolean(isMaximized));
+  maximizeWindowButton.setAttribute(
+    "title",
+    isMaximized ? "Restore" : "Maximize"
+  );
+  maximizeWindowButton.setAttribute(
+    "aria-label",
+    isMaximized ? "Restore window" : "Maximize window"
+  );
+};
+
+if (
+  electronAPI &&
+  typeof electronAPI.minimizeWindow === "function" &&
+  typeof electronAPI.toggleMaximizeWindow === "function" &&
+  typeof electronAPI.closeWindow === "function"
+) {
+  minimizeWindowButton.addEventListener("click", () => {
+    electronAPI.minimizeWindow().catch((error) => {
+      console.error("Failed to minimize window", error);
+    });
+  });
+
+  maximizeWindowButton.addEventListener("click", () => {
+    electronAPI.toggleMaximizeWindow()
+      .then((isMaximized) => {
+        setMaximizeButtonState(isMaximized);
+      })
+      .catch((error) => {
+        console.error("Failed to toggle maximize state", error);
+      });
+  });
+
+  closeWindowButton.addEventListener("click", () => {
+    electronAPI.closeWindow().catch((error) => {
+      console.error("Failed to close window", error);
+    });
+  });
+
+  if (typeof electronAPI.getWindowMaximized === "function") {
+    electronAPI.getWindowMaximized()
+      .then((isMaximized) => {
+        setMaximizeButtonState(isMaximized);
+      })
+      .catch((error) => {
+        console.error("Failed to query maximize state", error);
+      });
+  }
+
+  if (typeof electronAPI.onWindowMaximizedChanged === "function") {
+    electronAPI.onWindowMaximizedChanged((isMaximized) => {
+      setMaximizeButtonState(isMaximized);
+    });
+  }
+} else {
+  windowControls.hidden = true;
+}
 
 exportLuaButton.addEventListener("click", () => {
   openLuaModal();

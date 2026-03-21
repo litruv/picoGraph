@@ -1,4 +1,5 @@
 import { NodeGraph } from "../core/NodeGraph.js";
+import { createColorSwatchPicker } from "./ColorSwatchPicker.js";
 import { WorkspaceGeometry } from "./workspace/WorkspaceGeometry.js";
 import { WorkspaceDragManager } from "./workspace/WorkspaceDragManager.js";
 import { WorkspaceHistoryManager } from "./workspace/WorkspaceHistoryManager.js";
@@ -18,24 +19,17 @@ import { renderVariableList } from "./workspace/renderVariableList.js";
 import {
   WORKSPACE_SHORTCUTS,
 } from "./WorkspaceSpawnShortcuts.js";
+import {
+  normalizeVariableType,
+  getVariableTypeOptions,
+  defaultVariableValue as getDefaultVariableValue,
+  getTypeColor,
+  areTypesCompatible,
+} from "../types/TypeRegistry.js";
 
 /**
- * @typedef {'any'|'number'|'string'|'boolean'|'table'|'color'} VariableType
+ * @typedef {import('../types/TypeRegistry.js').VariableType} VariableType
  */
-
-/** @type {Array<{ value: VariableType, label: string }>} */
-const VARIABLE_TYPE_DEFINITIONS = [
-  { value: "any", label: "Any" },
-  { value: "number", label: "Number" },
-  { value: "string", label: "String" },
-  { value: "boolean", label: "Boolean" },
-  { value: "table", label: "Table" },
-  { value: "color", label: "Color" },
-];
-
-const SUPPORTED_VARIABLE_TYPES = new Set(
-  VARIABLE_TYPE_DEFINITIONS.map((entry) => entry.value)
-);
 
 /** @typedef {import('./WorkspaceSpawnShortcuts.js').WorkspaceShortcut} WorkspaceShortcut */
 /** @typedef {import('./WorkspaceSpawnShortcuts.js').WorkspaceShortcutModifier} WorkspaceShortcutModifier */
@@ -88,6 +82,7 @@ const SUPPORTED_VARIABLE_TYPES = new Set(
  * @property {HTMLUListElement} eventList Event summary list element.
  * @property {HTMLUListElement} variableList Variable summary list element.
  * @property {HTMLButtonElement} addVariableButton Global variable creation button.
+ * @property {HTMLButtonElement} saveButton Save action button.
  * @property {HTMLButtonElement} projectSettingsButton Project settings toggle.
   * @property {HTMLButtonElement} paletteToggleButton Palette toggle control.
   * @property {HTMLElement} appBodyElement Layout container hosting the workspace panes.
@@ -146,6 +141,8 @@ export class BlueprintWorkspace {
     this.variableListElement = options.variableList;
     this.addVariableButton = options.addVariableButton;
     /** @type {HTMLButtonElement} */
+    this.saveButton = options.saveButton;
+    /** @type {HTMLButtonElement} */
     this.projectSettingsButton = options.projectSettingsButton;
     /** @type {HTMLButtonElement} */
     this.frameSelectionButton = options.frameSelectionButton;
@@ -180,6 +177,10 @@ export class BlueprintWorkspace {
     this.connectionRefreshFrame = null;
     /** @type {number | null} */
     this.periodicUpdateTimer = null;
+    /** @type {number | null} */
+    this.saveFeedbackTimer = null;
+    /** @type {boolean} */
+    this.hasPendingSave = false;
 
     this.graph = new NodeGraph();
     /** @type {Map<string, WorkspaceVariable>} */
@@ -398,6 +399,7 @@ export class BlueprintWorkspace {
 
     this.navigationManager.updateZoomDisplay();
     this.navigationManager.setBackgroundOffset({ x: 0, y: 0 });
+    this.#resetSaveButtonAppearance();
 
     if (typeof this.generator.setProjectSettings === "function") {
       this.generator.setProjectSettings({ ...this.projectSettings });
@@ -446,6 +448,101 @@ export class BlueprintWorkspace {
   }
 
   /**
+   * Clears the active save feedback timer.
+   */
+  #clearSaveFeedbackTimer() {
+    if (this.saveFeedbackTimer !== null && typeof window !== "undefined") {
+      window.clearTimeout(this.saveFeedbackTimer);
+      this.saveFeedbackTimer = null;
+    }
+  }
+
+  /**
+   * Restores the save button to its current base state.
+   */
+  #resetSaveButtonAppearance() {
+    const button = this.saveButton;
+    if (!button) {
+      return;
+    }
+
+    button.classList.remove("is-busy", "is-success", "is-error", "is-pending");
+    button.disabled = !this.persistenceManager?.isStorageAvailable;
+    button.setAttribute(
+      "title",
+      this.persistenceManager?.isStorageAvailable
+        ? this.hasPendingSave
+          ? "Unsaved changes"
+          : "Workspace saved"
+        : "Saving is unavailable"
+    );
+
+    if (this.hasPendingSave) {
+      button.classList.add("is-pending");
+    }
+  }
+
+  /**
+   * Applies transient visual state to the save button.
+   *
+   * @param {{ status: 'idle'|'pending'|'saving'|'saved'|'error', source: 'manual'|'auto' }} state
+   */
+  #updateSaveButtonAppearance(state) {
+    const button = this.saveButton;
+    if (!button) {
+      return;
+    }
+
+    this.#clearSaveFeedbackTimer();
+    this.#resetSaveButtonAppearance();
+
+    if (!this.persistenceManager?.isStorageAvailable) {
+      return;
+    }
+
+    if (state.status === "pending") {
+      button.classList.add("is-pending");
+      button.setAttribute("title", "Unsaved changes");
+      return;
+    }
+
+    if (state.status === "saving") {
+      button.classList.remove("is-pending");
+      button.classList.add("is-busy");
+      button.disabled = true;
+      button.setAttribute("title", "Saving workspace");
+      return;
+    }
+
+    if (state.status === "saved") {
+      button.classList.remove("is-pending");
+      button.classList.add("is-success");
+      button.setAttribute(
+        "title",
+        state.source === "auto" ? "Workspace autosaved" : "Workspace saved"
+      );
+      this.saveFeedbackTimer = window.setTimeout(() => {
+        this.#resetSaveButtonAppearance();
+        this.saveFeedbackTimer = null;
+      }, 1400);
+      return;
+    }
+
+    if (state.status === "error") {
+      button.classList.remove("is-pending");
+      button.classList.add("is-error");
+      button.setAttribute("title", "Workspace save failed");
+      this.saveFeedbackTimer = window.setTimeout(() => {
+        this.#resetSaveButtonAppearance();
+        this.saveFeedbackTimer = null;
+      }, 1800);
+      return;
+    }
+
+    this.#resetSaveButtonAppearance();
+  }
+
+  /**
    * Reverts the most recent checkpoint.
    */
   undo() {
@@ -464,6 +561,41 @@ export class BlueprintWorkspace {
    */
   exportLua() {
     return this.#refreshLuaOutput();
+  }
+
+  /**
+   * Persists the current workspace state immediately.
+   *
+   * @returns {boolean}
+   */
+  saveWorkspace() {
+    if (!this.persistenceManager?.isStorageAvailable) {
+      return false;
+    }
+
+    this.persistenceManager.persistImmediately("manual");
+    return true;
+  }
+
+  /**
+   * Reflects persistence lifecycle changes in the save button state.
+   *
+   * @param {{ status: 'idle'|'pending'|'saving'|'saved'|'error', source: 'manual'|'auto' }} state
+   */
+  handlePersistenceStateChange(state) {
+    if (!state) {
+      return;
+    }
+
+    if (state.status === "pending") {
+      this.hasPendingSave = true;
+    } else if (state.status === "saved") {
+      this.hasPendingSave = false;
+    } else if (state.status === "error") {
+      this.hasPendingSave = true;
+    }
+
+    this.#updateSaveButtonAppearance(state);
   }
 
   /**
@@ -699,6 +831,12 @@ export class BlueprintWorkspace {
    * Registers DOM event listeners for interactivity.
    */
   #bindUiEvents() {
+    if (this.saveButton) {
+      this.saveButton.addEventListener("click", () => {
+        this.saveWorkspace();
+      });
+    }
+
     if (this.paletteToggleButton) {
       this.paletteToggleButton.addEventListener("click", () => {
         this.#togglePaletteVisibility();
@@ -1755,18 +1893,7 @@ export class BlueprintWorkspace {
    * @returns {VariableDefaultValue}
    */
   #defaultVariableValue(type) {
-    switch (type) {
-      case "number":
-        return 0;
-      case "string":
-        return "";
-      case "table":
-        return [];
-      case "boolean":
-        return false;
-      default:
-        return null;
-    }
+    return /** @type {VariableDefaultValue} */ (getDefaultVariableValue(type));
   }
 
   /**
@@ -1798,6 +1925,11 @@ export class BlueprintWorkspace {
           }
         }
         return 0;
+      }
+      case "color": {
+        const n = typeof value === "number" ? value : Number(value);
+        const safe = Number.isFinite(n) ? Math.round(n) : 7;
+        return Math.max(0, Math.min(15, safe));
       }
       case "boolean": {
         if (typeof value === "boolean") {
@@ -2133,6 +2265,18 @@ export class BlueprintWorkspace {
         this.#setVariableDefault(variable.id, defaultToggle.checked);
       });
       defaultField.appendChild(defaultToggle);
+    } else if (variable.type === "color") {
+      const rawDefault = variable.defaultValue;
+      const n = typeof rawDefault === "number" ? rawDefault : Number(rawDefault);
+      const initialIndex = Number.isFinite(n) ? Math.max(0, Math.min(15, Math.round(n))) : 7;
+      const picker = createColorSwatchPicker({
+        id: defaultId,
+        value: initialIndex,
+        onChange: (index) => {
+          this.#setVariableDefault(variable.id, index);
+        },
+      });
+      defaultField.appendChild(picker.element);
     } else if (variable.type === "number") {
       const defaultInput = document.createElement("input");
       defaultInput.type = "number";
@@ -2607,6 +2751,7 @@ export class BlueprintWorkspace {
       option.type = "button";
       option.className = "variable-type-option";
       option.dataset.variableType = entry.value;
+      option.style.setProperty("--overview-variable-color", getTypeColor(entry.value));
       option.textContent = entry.label;
       option.setAttribute("role", "menuitemradio");
       option.setAttribute(
@@ -3028,12 +3173,8 @@ export class BlueprintWorkspace {
       return null;
     }
 
-    const rect = workspaceElement.getBoundingClientRect();
-    const screenPoint = {
-      x: Math.max(0, Math.min(rect.width, event.clientX - rect.left)),
-      y: Math.max(0, Math.min(rect.height, event.clientY - rect.top)),
-    };
-    const worldPoint = navigator.screenPointToWorld(screenPoint);
+    // Use dragManager.clientToWorkspace for proper coordinate conversion
+    const worldPoint = this.dragManager.clientToWorkspace(event.clientX, event.clientY);
     return this.addNode(shortcut.definitionId, worldPoint);
   }
 
@@ -3406,9 +3547,7 @@ export class BlueprintWorkspace {
    * @returns {string}
    */
   #formatVariableType(type) {
-    const entry = VARIABLE_TYPE_DEFINITIONS.find(
-      (definition) => definition.value === type
-    );
+    const entry = getVariableTypeOptions().find((opt) => opt.value === type);
     return entry ? entry.label : "Any";
   }
 
@@ -3419,17 +3558,7 @@ export class BlueprintWorkspace {
    * @returns {VariableType}
    */
   #normalizeVariableType(value) {
-    if (typeof value === "string") {
-      const normalized = value.trim().toLowerCase();
-      if (
-        SUPPORTED_VARIABLE_TYPES.has(
-          /** @type {VariableType} */ (normalized)
-        )
-      ) {
-        return /** @type {VariableType} */ (normalized);
-      }
-    }
-    return "any";
+    return /** @type {VariableType} */ (normalizeVariableType(value));
   }
 
   /**
@@ -3438,7 +3567,7 @@ export class BlueprintWorkspace {
    * @returns {Array<{ value: VariableType, label: string }>}
    */
   #getVariableTypeOptions() {
-    return VARIABLE_TYPE_DEFINITIONS.map((entry) => ({ ...entry }));
+    return getVariableTypeOptions();
   }
 
   /**
@@ -3641,12 +3770,14 @@ export class BlueprintWorkspace {
       node.type === "set_local_var" || node.type === "get_local_var";
     article.classList.add("blueprint-node--variable");
     article.dataset.variableType = binding.type;
+    article.style.setProperty("--overview-variable-color", getTypeColor(binding.type));
     article.dataset.variableRole = role;
     article.dataset.variableScope = isLocal ? "local" : "global";
 
     header.classList.add("node-header--variable");
     header.setAttribute("data-variable-role", role);
     header.setAttribute("data-variable-type", binding.type);
+    header.style.setProperty("--overview-variable-color", getTypeColor(binding.type));
     header.setAttribute("data-variable-scope", isLocal ? "local" : "global");
     const prefixBase = role === "set" ? "Set" : "Get";
     const prefix = isLocal ? `${prefixBase} Local` : prefixBase;
@@ -4957,7 +5088,7 @@ export class BlueprintWorkspace {
    * Spawns a node at the requested context menu position.
    *
    * @param {PaletteNodeDefinition} definition Node definition to instantiate.
-   * @param {{ x: number, y: number }} spawnPosition Workspace-relative spawn coordinates.
+   * @param {{ x: number, y: number }} spawnPosition Screen-relative spawn coordinates (relative to workspace element).
    * @returns {import('../core/BlueprintNode.js').BlueprintNode | null}
    */
   spawnNodeFromContextMenu(definition, spawnPosition) {
@@ -4965,7 +5096,14 @@ export class BlueprintWorkspace {
       x: Math.max(0, spawnPosition.x),
       y: Math.max(0, spawnPosition.y),
     };
-    const worldSpawn = this.navigationManager.screenPointToWorld(clamped);
+    // Convert screen-relative position to world coordinates
+    const zoom = this.navigationManager?.getZoomLevel() ?? this.zoomLevel ?? 1;
+    const clampedZoom = Math.max(0.01, zoom);
+    const offset = this.navigationManager?.getEffectiveOffset() ?? { x: 0, y: 0 };
+    const worldSpawn = {
+      x: clamped.x / clampedZoom - offset.x,
+      y: clamped.y / clampedZoom - offset.y,
+    };
     const spawn = WorkspaceGeometry.snapPositionToGrid(this, worldSpawn);
     const pendingConnectionSnapshot = this.pendingConnectionSpawn
       ? {
@@ -5500,8 +5638,86 @@ export class BlueprintWorkspace {
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.classList.add("connection-path");
     path.dataset.type = kind;
+    path.style.stroke = getTypeColor(kind);
     this.connectionLayer.appendChild(path);
     return path;
+  }
+
+  /**
+   * Returns the SVG defs element on the connection layer, creating it if absent.
+   *
+   * @returns {SVGDefsElement}
+   */
+  #getOrCreateSvgDefs() {
+    let defs = this.connectionLayer.querySelector("defs");
+    if (!defs) {
+      defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      this.connectionLayer.prepend(defs);
+    }
+    return /** @type {SVGDefsElement} */ (defs);
+  }
+
+  /**
+   * Creates or updates a linearGradient element for a cross-type wire.
+   *
+   * @param {SVGDefsElement} defs Defs container.
+   * @param {string} connectionId Connection identifier.
+   * @param {string} fromKind Source pin kind.
+   * @param {string} toKind Target pin kind.
+   * @param {{x:number,y:number}} start Gradient start point.
+   * @param {{x:number,y:number}} end Gradient end point.
+   * @returns {string} The gradient element id.
+   */
+  #upsertConnectionGradient(defs, connectionId, fromKind, toKind, start, end) {
+    const gradId = `cgrad-${connectionId}`;
+    let grad = defs.querySelector(`#${CSS.escape(gradId)}`);
+    if (!grad) {
+      grad = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "linearGradient"
+      );
+      grad.id = gradId;
+      grad.setAttribute("gradientUnits", "userSpaceOnUse");
+      const stop1 = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop1.setAttribute("offset", "0%");
+      const stop2 = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "stop"
+      );
+      stop2.setAttribute("offset", "100%");
+      grad.appendChild(stop1);
+      grad.appendChild(stop2);
+      defs.appendChild(grad);
+    }
+
+    grad.setAttribute("x1", String(start.x));
+    grad.setAttribute("y1", String(start.y));
+    grad.setAttribute("x2", String(end.x));
+    grad.setAttribute("y2", String(end.y));
+
+    const style = getComputedStyle(this.workspaceElement);
+    const stops = grad.querySelectorAll("stop");
+    stops[0].setAttribute(
+      "stop-color",
+      this.#getPinKindColor(style, fromKind)
+    );
+    stops[1].setAttribute("stop-color", this.#getPinKindColor(style, toKind));
+
+    return gradId;
+  }
+
+  /**
+   * Resolves the color for a given pin kind.
+   *
+   * @param {CSSStyleDeclaration} _style Computed style (unused, kept for API compatibility).
+   * @param {string} kind Pin kind identifier.
+   * @returns {string}
+   */
+  #getPinKindColor(_style, kind) {
+    return getTypeColor(kind);
   }
 
   /**
@@ -5579,6 +5795,7 @@ export class BlueprintWorkspace {
         this.connectionLayer.removeAttribute("preserveAspectRatio");
       }
     }
+    const defs = this.#getOrCreateSvgDefs();
     const activeIds = new Set();
     this.graph.getConnections().forEach((connection) => {
       activeIds.add(connection.id);
@@ -5588,7 +5805,6 @@ export class BlueprintWorkspace {
         this.connectionElements.set(connection.id, path);
       }
 
-      path.dataset.type = connection.kind;
       path.dataset.connectionId = connection.id;
       const geometry = this.#computeConnectionGeometry(
         connection.from,
@@ -5605,12 +5821,47 @@ export class BlueprintWorkspace {
       } ${end.x - controlOffset} ${end.y} ${end.x} ${end.y}`;
       path.dataset.active = "false";
       path.setAttribute("d", d);
+
+      const fromPin = this.graph.nodes
+        .get(connection.from.nodeId)
+        ?.getPin(connection.from.pinId);
+      const toPin = this.graph.nodes
+        .get(connection.to.nodeId)
+        ?.getPin(connection.to.pinId);
+      const fromKind = fromPin?.kind;
+      const toKind = toPin?.kind;
+
+      if (
+        fromKind &&
+        toKind &&
+        fromKind !== toKind &&
+        fromKind !== "any" &&
+        toKind !== "any"
+      ) {
+        path.dataset.type = "mixed";
+        const gradId = this.#upsertConnectionGradient(
+          defs,
+          connection.id,
+          fromKind,
+          toKind,
+          start,
+          end
+        );
+        path.style.stroke = "";
+        path.setAttribute("stroke", `url(#${gradId})`);
+      } else {
+        path.dataset.type = connection.kind;
+        path.removeAttribute("stroke");
+        path.style.stroke = getTypeColor(connection.kind);
+        defs.querySelector(`#cgrad-${connection.id}`)?.remove();
+      }
     });
 
     this.connectionElements.forEach((path, id) => {
       if (!activeIds.has(id)) {
         path.remove();
         this.connectionElements.delete(id);
+        defs.querySelector(`#cgrad-${id}`)?.remove();
       }
     });
   }
@@ -5886,10 +6137,7 @@ export class BlueprintWorkspace {
    * @returns {boolean}
    */
   #arePinKindsCompatible(outputKind, inputKind) {
-    if (inputKind === "any" || outputKind === "any") {
-      return true;
-    }
-    return outputKind === inputKind;
+    return areTypesCompatible(outputKind, inputKind);
   }
 
   /**
@@ -6197,12 +6445,14 @@ export class BlueprintWorkspace {
       row.className = "custom-event-parameter-row";
       row.dataset.parameterId = parameter.id;
       row.dataset.parameterType = parameter.type;
+      row.style.setProperty("--overview-variable-color", getTypeColor(parameter.type));
 
       const typeButton = document.createElement("button");
       typeButton.type = "button";
       typeButton.className =
         "variable-type-button custom-event-parameter-type-button";
       typeButton.dataset.variableType = parameter.type;
+      typeButton.style.setProperty("--overview-variable-color", getTypeColor(parameter.type));
       typeButton.setAttribute("aria-haspopup", "menu");
       typeButton.setAttribute("aria-expanded", "false");
       row.appendChild(typeButton);
@@ -6218,7 +6468,9 @@ export class BlueprintWorkspace {
         const display = this.#formatVariableType(normalized);
         const referenceName = nameInputElement.value.trim() || parameter.id;
         row.dataset.parameterType = normalized;
+        row.style.setProperty("--overview-variable-color", getTypeColor(normalized));
         typeButton.dataset.variableType = normalized;
+        typeButton.style.setProperty("--overview-variable-color", getTypeColor(normalized));
         typeButton.title = `Type: ${display}`;
         typeButton.setAttribute(
           "aria-label",
@@ -6489,6 +6741,7 @@ export class BlueprintWorkspace {
       this.connectionElements.forEach((path) => path.remove());
       this.nodeElements.clear();
       this.connectionElements.clear();
+      this.connectionLayer.querySelector("defs")?.remove();
       this.inlineEditorManager.clear();
       this.nodeDragRotation.clear();
       this.dragManager.stopNodeRotationDecay();
@@ -6531,7 +6784,8 @@ export class BlueprintWorkspace {
             entry.type === "string" ||
             entry.type === "boolean" ||
             entry.type === "any" ||
-            entry.type === "table"
+            entry.type === "table" ||
+            entry.type === "color"
               ? entry.type
               : "any";
           const defaultValue = this.#normalizeVariableDefault(

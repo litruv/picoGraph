@@ -1,3 +1,7 @@
+import { mathAddNode } from "./add.js";
+import { mathSubtractNode } from "./subtract.js";
+import { mathMultiplyNode } from "./multiply.js";
+import { mathDivideNode } from "./divide.js";
 import { mathMaxNode } from "./max.js";
 import { mathMinNode } from "./min.js";
 import { mathMidNode } from "./mid.js";
@@ -25,6 +29,10 @@ import { mathDivNode } from "./div.js";
  * All math-related node modules backed by PICO-8 helpers.
  */
 export const mathNodes = [
+  mathAddNode,
+  mathSubtractNode,
+  mathMultiplyNode,
+  mathDivideNode,
   mathMaxNode,
   mathMinNode,
   mathMidNode,
@@ -54,6 +62,10 @@ export const mathNodes = [
  * @type {Array<{ function: string, nodeId: string, implemented: boolean }>}
  */
 export const mathFunctionChecklist = [
+  { function: "+", nodeId: "math_add", implemented: true },
+  { function: "-", nodeId: "math_subtract", implemented: true },
+  { function: "*", nodeId: "math_multiply", implemented: true },
+  { function: "/", nodeId: "math_divide", implemented: true },
   { function: "MAX", nodeId: "math_max", implemented: true },
   { function: "MIN", nodeId: "math_min", implemented: true },
   { function: "MID", nodeId: "math_mid", implemented: true },

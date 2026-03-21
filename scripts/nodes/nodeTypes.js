@@ -16,6 +16,8 @@
  * @property {('exec'|'number'|'boolean'|'string'|'table'|'any'|'color')} kind Blueprint connection kind.
  * @property {string} [description] Optional tooltip text.
  * @property {unknown} [defaultValue] Default literal for data pins.
+ * @property {Array<{label: string, value: string}>} [options] Renders an inline select dropdown when the pin is unconnected.
+ * @property {boolean} [spawnLiteralNode] Whether dragging off this pin offers the default literal node. Defaults to the handler's spawnableByDefault.
  */
 
 /**

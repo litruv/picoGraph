@@ -188,10 +188,14 @@ export class WorkspaceDropManager {
 
     this.#workspace.paletteManager.handleDragEnd();
 
-    const spawn = WorkspaceGeometry.snapPositionToGrid(
-      this.#workspace,
-      WorkspaceGeometry.eventToWorkspacePoint(this.#workspace, event)
-    );
+    // Snap to grid first, then offset for centering (consistent with ghost positioning)
+    const cursorWorld = WorkspaceGeometry.eventToWorkspacePoint(this.#workspace, event);
+    const snapped = WorkspaceGeometry.snapPositionToGrid(this.#workspace, cursorWorld);
+    // Offset spawn to match the centered ghost position (roughly half ghost size)
+    const spawn = {
+      x: snapped.x - 110,
+      y: snapped.y - 70,
+    };
 
     this.#workspace.addNode(definitionId, spawn);
   }
@@ -214,10 +218,12 @@ export class WorkspaceDropManager {
 
     const definitions = this.#getVariableSpawnDefinitions(variableId);
     if (!definitions.length) {
-      const spawn = WorkspaceGeometry.snapPositionToGrid(
-        this.#workspace,
-        WorkspaceGeometry.eventToWorkspacePoint(this.#workspace, event)
-      );
+      const cursorWorld = WorkspaceGeometry.eventToWorkspacePoint(this.#workspace, event);
+      const snapped = WorkspaceGeometry.snapPositionToGrid(this.#workspace, cursorWorld);
+      const spawn = {
+        x: snapped.x - 110,
+        y: snapped.y - 70,
+      };
       const fallback = this.#workspace.addNode("get_var", spawn);
       if (fallback) {
         const nodeName = variable.name || variable.id;

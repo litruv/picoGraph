@@ -29,20 +29,11 @@ export class WorkspaceGeometry {
    * Converts viewport coordinates into workspace-relative coordinates.
    *
    * @param {import('../BlueprintWorkspace.js').BlueprintWorkspace} workspace Workspace instance.
-   * @param {{ clientX: number, clientY: number }} event Pointer-like event payload.
+   * @param {{ clientX?: number, clientY?: number }} event Pointer-like event payload.
    * @returns {{ x: number, y: number }}
    */
   static eventToWorkspacePoint(workspace, event) {
-    const rect = workspace.workspaceElement.getBoundingClientRect();
-    const rawX = event?.clientX ?? 0;
-    const rawY = event?.clientY ?? 0;
-    const x = rawX - rect.left;
-    const y = rawY - rect.top;
-    const zoom = workspace.zoomLevel || 1;
-    return {
-      x: Math.max(0, Math.min(rect.width, x)) / zoom,
-      y: Math.max(0, Math.min(rect.height, y)) / zoom,
-    };
+    return workspace.dragManager.clientToWorkspace(event?.clientX, event?.clientY);
   }
 
   /**
@@ -54,8 +45,9 @@ export class WorkspaceGeometry {
    */
   static snapPositionToGrid(workspace, position) {
     const size = workspace.gridSize || DEFAULT_GRID_SIZE;
-    const offsetX = workspace.workspaceBackgroundOffset?.x ?? 0;
-    const offsetY = workspace.workspaceBackgroundOffset?.y ?? 0;
+    const effectiveOffset = workspace.navigationManager?.getEffectiveOffset?.();
+    const offsetX = Number.isFinite(effectiveOffset?.x) ? effectiveOffset.x : 0;
+    const offsetY = Number.isFinite(effectiveOffset?.y) ? effectiveOffset.y : 0;
     const snap = (value, offset) => {
       const local = value - offset;
       const snapped = Math.round(local / size) * size;
